@@ -218,7 +218,7 @@ export function GameCanvas({ level, onComplete }: Props) {
           />
         ))}
       </Svg>
-      <AirJetButton onHoldChange={handleHoldChange} centerX={ramp.lowPoint.x} />
+      <AirJetButton onHoldChange={handleHoldChange} />
       {needsPermission && (
         <View style={styles.permissionOverlay} pointerEvents="box-none">
           <Pressable style={styles.permissionButton} onPress={requestPermission}>

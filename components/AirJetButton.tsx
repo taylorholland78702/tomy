@@ -5,22 +5,17 @@ import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
 interface Props {
   onHoldChange: (active: boolean) => void;
-  /** Horizontal center of the button, in tank coordinates — lines it up with the ramp's low point. */
-  centerX: number;
 }
 
-const HOUSING_WIDTH = 108;
-const HOUSING_HEIGHT = 150;
-const PISTON_WIDTH = 74;
-const PISTON_HEIGHT = 118;
+const BUTTON_SIZE = 92;
+const SOCKET_SIZE = BUTTON_SIZE + 18;
 
 /**
- * Air Jet push button styled after a real Waterfuls toy's plunger: a white cylindrical piston
- * (rounded cap, straight shaft, gradient shading for roundness) protruding out of a dark arched
- * tunnel housing, with a visible gap of housing showing around the piston's rounded top. Pressing
- * shoves the piston further down into the tunnel rather than just shrinking a flat disc.
+ * Single circular Air Jet push button styled like a classic Tomy handheld's white plastic
+ * button: a glossy raised dome sitting in a recessed dark socket, pressing down and flattening
+ * its shadow when held. Heavy tap on press, soft ticks while held.
  */
-export function AirJetButton({ onHoldChange, centerX }: Props) {
+export function AirJetButton({ onHoldChange }: Props) {
   const pressAnim = useRef(new Animated.Value(0)).current; // 0 = raised, 1 = pressed in
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -40,14 +35,14 @@ export function AirJetButton({ onHoldChange, centerX }: Props) {
     }
   };
 
-  const translateY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 14] });
-  const scaleY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.93] });
+  const scale = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] });
+  const translateY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 3] });
 
   return (
-    <Animated.View style={[styles.housing, { left: centerX - HOUSING_WIDTH / 2 }]}>
-      <Animated.View style={[styles.pistonWrap, { transform: [{ translateY }, { scaleY }] }]}>
+    <Animated.View style={styles.socket}>
+      <Animated.View style={[styles.buttonWrap, { transform: [{ scale }, { translateY }] }]}>
         <Pressable onPressIn={startPress} onPressOut={endPress}>
-          <LinearGradient colors={['#FFFFFF', '#F2F4F6', '#CBD2D9']} locations={[0, 0.55, 1]} style={styles.pistonFace}>
+          <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
             <Animated.View style={styles.highlight} />
           </LinearGradient>
         </Pressable>
@@ -57,44 +52,40 @@ export function AirJetButton({ onHoldChange, centerX }: Props) {
 }
 
 const styles = StyleSheet.create({
-  housing: {
+  socket: {
     position: 'absolute',
-    bottom: 30,
-    width: HOUSING_WIDTH,
-    height: HOUSING_HEIGHT,
-    borderTopLeftRadius: HOUSING_WIDTH / 2,
-    borderTopRightRadius: HOUSING_WIDTH / 2,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    backgroundColor: '#0A2A3D',
+    bottom: 44,
+    alignSelf: 'center',
+    width: SOCKET_SIZE,
+    height: SOCKET_SIZE,
+    borderRadius: SOCKET_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.28)',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 4,
-    boxShadow: 'inset 0px 8px 12px rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4)',
   },
-  pistonWrap: {
-    width: PISTON_WIDTH,
-    height: PISTON_HEIGHT,
-    borderTopLeftRadius: PISTON_WIDTH / 2,
-    borderTopRightRadius: PISTON_WIDTH / 2,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    boxShadow: '0px 5px 8px rgba(0,0,0,0.4)',
+  buttonWrap: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    boxShadow: '0px 6px 8px rgba(0,0,0,0.4)',
   },
-  pistonFace: {
-    width: PISTON_WIDTH,
-    height: PISTON_HEIGHT,
-    borderTopLeftRadius: PISTON_WIDTH / 2,
-    borderTopRightRadius: PISTON_WIDTH / 2,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
+  buttonFace: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   highlight: {
-    marginTop: PISTON_WIDTH * 0.22,
-    width: PISTON_WIDTH * 0.45,
-    height: PISTON_WIDTH * 0.22,
-    borderRadius: PISTON_WIDTH * 0.22,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    position: 'absolute',
+    top: BUTTON_SIZE * 0.14,
+    left: BUTTON_SIZE * 0.2,
+    width: BUTTON_SIZE * 0.5,
+    height: BUTTON_SIZE * 0.26,
+    borderRadius: BUTTON_SIZE * 0.25,
+    backgroundColor: 'rgba(255,255,255,0.8)',
   },
 });

@@ -50,14 +50,13 @@ export interface RampInfo extends RampPoints {
 
 /**
  * Geometry for the V-shaped double ramp, factored out so physics and rendering always agree:
- * two straight ramps meeting at a low point that's deliberately off-center (skewed toward one
- * side, matching the real Waterfuls toy), not a flat bar or a centered V.
+ * two straight ramps meeting at a centered low point directly beneath the Air Jet button.
  */
 export function computeRampPoints(width: number, baseY: number): RampPoints {
   return {
-    leftPoint: { x: width * 0.08, y: baseY - 18 },
-    lowPoint: { x: width * 0.32, y: baseY },
-    rightPoint: { x: width * 0.92, y: baseY - 46 },
+    leftPoint: { x: width * 0.08, y: baseY - 32 },
+    lowPoint: { x: width * 0.5, y: baseY },
+    rightPoint: { x: width * 0.92, y: baseY - 32 },
   };
 }
 
@@ -98,7 +97,7 @@ export function createPeg(world: Matter.World, x: number, y: number, radius = 6)
 }
 
 /** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */
-export const BALL_RADIUS = 18;
+export const BALL_RADIUS = 13;
 /**
  * A true semicircular bowl, arc radius just barely bigger than a ball so it nests snugly — per
  * the "match the outer size of the balls" design goal, not an arbitrary bigger basket.

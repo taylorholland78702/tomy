@@ -35,9 +35,6 @@ const NINE_CUP_BALL_PALETTE = [
   '#FF3B7F',
   '#8A5CFF',
   '#FFD23B',
-  '#3BD6FF',
-  '#3BFFA0',
-  '#FF7A3B',
 ];
 
 /**
@@ -51,8 +48,8 @@ export const LEVELS: LevelConfig[] = [
     phase: 1,
     type: 'baskets',
     name: 'Nine Cups',
-    // 3x3 grid matching the real Waterfuls toy: 9 cups, 12 balls (more balls than slots), with
-    // small pegs nestled in the gaps between cups.
+    // 3x3 grid matching the real Waterfuls toy: 9 cups, 9 balls, with small pegs nestled in the
+    // gaps between cups.
     targets: [
       { id: 't1', dx: -110, y: 140 },
       { id: 't2', dx: 0, y: 130 },
@@ -70,7 +67,7 @@ export const LEVELS: LevelConfig[] = [
       { id: 'p3', dx: -55, y: 275 },
       { id: 'p4', dx: 55, y: 275 },
     ],
-    ballCount: 12,
+    ballCount: 9,
     ballColors: NINE_CUP_BALL_PALETTE,
   },
   {
