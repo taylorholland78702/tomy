@@ -59,8 +59,11 @@ interface RenderBody {
   isBubble: boolean;
 }
 
-const JET_STRENGTH = 0.0042;
-const JET_COLUMN_HALF_WIDTH = 90;
+const JET_STRENGTH = 0.005;
+/** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
+const JET_BASE_COLUMN_HALF_WIDTH = 50;
+/** How much the column widens per pixel risen — this is the "fan out left and right" as it climbs. */
+const JET_FAN_RATE = 0.18;
 /**
  * How far above the jet's origin the lift force fades to zero — see applyAirJet in
  * physics/engine.ts. Tuned just under the ~500px distance from the ramp's low point up to the
@@ -124,7 +127,6 @@ export function GameCanvas({ level, onComplete }: Props) {
     filledRef.current = new Set();
     wonRef.current = false;
 
-
     let lastTime = Date.now();
     const loop = () => {
       const now = Date.now();
@@ -134,10 +136,18 @@ export function GameCanvas({ level, onComplete }: Props) {
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
 
       if (jetActiveRef.current) {
-        applyAirJet(pw.world, jetXRef.current, jetYRef.current, JET_STRENGTH, JET_COLUMN_HALF_WIDTH, JET_VERTICAL_RANGE);
-        if (Math.random() < 0.45) spawnBubble(pw.world, jetXRef.current, height - 80);
+        applyAirJet(
+          pw.world,
+          jetXRef.current,
+          jetYRef.current,
+          JET_STRENGTH,
+          JET_BASE_COLUMN_HALF_WIDTH,
+          JET_VERTICAL_RANGE,
+          JET_FAN_RATE
+        );
+        spawnBubble(pw.world, jetXRef.current, height - 80);
       }
-      updateBubbles(pw.world);
+      updateBubbles(pw.world, 1600);
 
       Matter.Engine.update(pw.engine, delta);
       const filledChanged = checkTargets(pw, level, width, filledRef.current, wonRef, () => {

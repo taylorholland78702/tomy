@@ -11,7 +11,7 @@ export const BUOYANCY_ACCEL = 0.0006;
  * velocity damper each step. Do NOT reimplement drag as `applyForce(-k*v)`: matter-js scales
  * applyForce by deltaTime^2 (~278 at 60fps), so a velocity-proportional force resonates into an
  * exponential blowup within a handful of frames instead of damping. */
-export const WATER_FRICTION_AIR = 0.035;
+export const WATER_FRICTION_AIR = 0.02;
 
 export interface PhysicsWorld {
   engine: Matter.Engine;
@@ -162,36 +162,43 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 }
 
 /**
- * Continuous upward air column rising from the bottom-center Air Jet button, weakening with both
- * horizontal distance from the column center AND height risen above the jet's origin — real
- * bubbles lose momentum as they rise. Without the vertical falloff, holding the button applies
- * the *same* strong lift to a ball already resting in a cup near the top as it does to one still
- * down at the bottom, blasting it straight back out; a light/brief press should only stir balls
- * near the bottom and leave already-placed top-row balls undisturbed.
+ * Upward air column rising from the bottom-center Air Jet button, modeled like a real bubble
+ * plume rather than a rigid laser: it's narrowest and strongest right at the origin, WIDENS
+ * (fans out left/right) the higher it rises, and its strength fades continuously with height —
+ * both together, so by the time it nears the top cup row it's a broad, gentle drift rather than a
+ * concentrated blast. This is also what makes side cups vulnerable: at greater heights the
+ * (weaker, but nonzero) plume is wide enough to reach dx columns it wouldn't touch near the
+ * bottom, so a held press can gradually jiggle — and occasionally knock loose — an off-center
+ * ball, while a dead-center resting ball still gets zero force once verticalRange is exceeded.
  */
 export function applyAirJet(
   world: Matter.World,
   jetX: number,
   jetY: number,
   strength: number,
-  columnHalfWidth: number,
-  verticalRange: number
+  baseColumnHalfWidth: number,
+  verticalRange: number,
+  fanRate: number
 ) {
   const bodies = Matter.Composite.allBodies(world);
   for (const body of bodies) {
     if (body.isStatic) continue;
+
+    const heightRisen = Math.max(0, jetY - body.position.y); // 0 at/below the origin
+    const verticalFalloff = Math.max(0, 1 - heightRisen / verticalRange);
+    if (verticalFalloff <= 0) continue;
+
+    const columnHalfWidth = baseColumnHalfWidth + fanRate * heightRisen;
     const dx = body.position.x - jetX;
     const absDx = Math.abs(dx);
     if (absDx >= columnHalfWidth) continue;
-
     const horizontalFalloff = 1 - absDx / columnHalfWidth;
-    const heightRisen = jetY - body.position.y; // positive once the body is above the jet's origin
-    const verticalFalloff = Math.max(0, 1 - heightRisen / verticalRange);
+
     const falloff = horizontalFalloff * verticalFalloff;
     if (falloff <= 0) continue;
 
     Matter.Body.applyForce(body, body.position, {
-      x: -dx * 0.00003 * falloff,
+      x: -dx * 0.00002 * falloff,
       y: -strength * falloff,
     });
   }
