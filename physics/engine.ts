@@ -162,24 +162,38 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 }
 
 /**
- * Continuous upward air column rising from the bottom-center Air Jet button. Unlike a localized
- * radial burst, this applies lift based only on horizontal distance from the column center, so
- * holding the button keeps carrying a ball upward for as long as it stays inside the column —
- * all the way from the bottom support bar up to targets near the top.
+ * Continuous upward air column rising from the bottom-center Air Jet button, weakening with both
+ * horizontal distance from the column center AND height risen above the jet's origin — real
+ * bubbles lose momentum as they rise. Without the vertical falloff, holding the button applies
+ * the *same* strong lift to a ball already resting in a cup near the top as it does to one still
+ * down at the bottom, blasting it straight back out; a light/brief press should only stir balls
+ * near the bottom and leave already-placed top-row balls undisturbed.
  */
-export function applyAirJet(world: Matter.World, jetX: number, strength: number, columnHalfWidth: number) {
+export function applyAirJet(
+  world: Matter.World,
+  jetX: number,
+  jetY: number,
+  strength: number,
+  columnHalfWidth: number,
+  verticalRange: number
+) {
   const bodies = Matter.Composite.allBodies(world);
   for (const body of bodies) {
     if (body.isStatic) continue;
     const dx = body.position.x - jetX;
     const absDx = Math.abs(dx);
-    if (absDx < columnHalfWidth) {
-      const falloff = 1 - absDx / columnHalfWidth;
-      Matter.Body.applyForce(body, body.position, {
-        x: -dx * 0.00003 * falloff,
-        y: -strength * falloff,
-      });
-    }
+    if (absDx >= columnHalfWidth) continue;
+
+    const horizontalFalloff = 1 - absDx / columnHalfWidth;
+    const heightRisen = jetY - body.position.y; // positive once the body is above the jet's origin
+    const verticalFalloff = Math.max(0, 1 - heightRisen / verticalRange);
+    const falloff = horizontalFalloff * verticalFalloff;
+    if (falloff <= 0) continue;
+
+    Matter.Body.applyForce(body, body.position, {
+      x: -dx * 0.00003 * falloff,
+      y: -strength * falloff,
+    });
   }
 }
 

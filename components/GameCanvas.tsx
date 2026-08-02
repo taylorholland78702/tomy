@@ -59,8 +59,15 @@ interface RenderBody {
   isBubble: boolean;
 }
 
-const JET_STRENGTH = 0.0026;
+const JET_STRENGTH = 0.0042;
 const JET_COLUMN_HALF_WIDTH = 90;
+/**
+ * How far above the jet's origin the lift force fades to zero — see applyAirJet in
+ * physics/engine.ts. Tuned just under the ~500px distance from the ramp's low point up to the
+ * top cup row, so a resting top-row ball gets zero lift (safe from any hold duration) while
+ * balls rising from the ramp still reliably reach that height on momentum.
+ */
+const JET_VERTICAL_RANGE = 490;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 
 export function GameCanvas({ level, onComplete }: Props) {
@@ -71,6 +78,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const wonRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const jetXRef = useRef(width / 2);
+  const jetYRef = useRef(height);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -86,6 +94,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     setEngineVersion((v) => v + 1);
     const rampInfo = createVRamp(pw.world, width, rampBaseY);
     jetXRef.current = rampInfo.lowPoint.x;
+    jetYRef.current = rampInfo.lowPoint.y;
 
     level.targets.forEach((target) => {
       createCup(pw.world, width / 2 + target.dx, target.y, target.id);
@@ -115,6 +124,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     filledRef.current = new Set();
     wonRef.current = false;
 
+
     let lastTime = Date.now();
     const loop = () => {
       const now = Date.now();
@@ -124,7 +134,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
 
       if (jetActiveRef.current) {
-        applyAirJet(pw.world, jetXRef.current, JET_STRENGTH, JET_COLUMN_HALF_WIDTH);
+        applyAirJet(pw.world, jetXRef.current, jetYRef.current, JET_STRENGTH, JET_COLUMN_HALF_WIDTH, JET_VERTICAL_RANGE);
         if (Math.random() < 0.45) spawnBubble(pw.world, jetXRef.current, height - 80);
       }
       updateBubbles(pw.world);
