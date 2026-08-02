@@ -48,48 +48,50 @@ export function createSupportBar(world: Matter.World, width: number, y: number) 
   return bar;
 }
 
-export interface CupBodies {
-  floor: Matter.Body;
-  leftWall: Matter.Body;
-  rightWall: Matter.Body;
-  /** World-space y of the floor — use this (not the cup's nominal y) for settle/scoring checks. */
-  floorY: number;
+/** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */
+export const BALL_RADIUS = 18;
+/**
+ * A true semicircular bowl, arc radius just barely bigger than a ball so it nests snugly — per
+ * the "match the outer size of the balls" design goal, not an arbitrary bigger basket.
+ */
+export const CUP_RADIUS = BALL_RADIUS + 4;
+
+export interface CupInfo {
+  segments: Matter.Body[];
+  /** World-space y a resting ball's *center* settles at — use this, not the cup's nominal y, for scoring. */
+  restY: number;
 }
 
 /**
- * Physical basket: a flat floor plus two outward-flared walls, all static, so a ball that drifts
- * in through the flared mouth is funneled down onto the floor and physically held there — instead
- * of a bare sensor circle a ball could pass straight through or bounce out of indefinitely.
+ * Physical basket: a true semicircular arc built from a chain of small static rectangle segments
+ * (matter-js has no native curved-collider primitive), rim at `y`, deepest point at `y + CUP_RADIUS`.
+ * Because the arc radius is only ~BALL_RADIUS + 4, a ball resting at the bottom sits almost exactly
+ * at (x, y) with its top half poking up above the rim — the earlier flared-rectangle-funnel design
+ * let balls hang up on the rim geometry itself, well above the zone the scoring check looked at.
  */
-export function createCup(world: Matter.World, x: number, y: number, radius: number, id: string): CupBodies {
-  const wallHeight = radius * 1.3;
-  const wallThickness = 7;
-  const flare = 0.32; // radians the walls tilt outward at the mouth, forming a funnel
-  const floorY = y + radius * 0.55;
+export function createCup(world: Matter.World, x: number, y: number, id: string): CupInfo {
+  const segmentCount = 10;
+  const thickness = 6;
+  const segLength = (Math.PI * CUP_RADIUS) / segmentCount + 3; // + slight overlap to avoid gaps
 
-  const floor = Matter.Bodies.rectangle(x, floorY, radius * 1.7, 10, {
-    isStatic: true,
-    friction: 0.9,
-    restitution: 0.05,
-    label: `cup-floor-${id}`,
-  });
+  const segments: Matter.Body[] = [];
+  for (let i = 0; i < segmentCount; i++) {
+    const theta = -Math.PI / 2 + ((i + 0.5) / segmentCount) * Math.PI; // -90deg (left rim) to +90deg (right rim)
+    const px = x + CUP_RADIUS * Math.sin(theta);
+    const py = y + CUP_RADIUS * Math.cos(theta);
+    segments.push(
+      Matter.Bodies.rectangle(px, py, segLength, thickness, {
+        isStatic: true,
+        angle: -theta,
+        friction: 0.9,
+        restitution: 0.05,
+        label: `cup-wall-${id}`,
+      })
+    );
+  }
 
-  const leftWall = Matter.Bodies.rectangle(x - radius * 0.85, y, wallThickness, wallHeight, {
-    isStatic: true,
-    angle: -flare,
-    restitution: 0.05,
-    label: `cup-wall-${id}`,
-  });
-
-  const rightWall = Matter.Bodies.rectangle(x + radius * 0.85, y, wallThickness, wallHeight, {
-    isStatic: true,
-    angle: flare,
-    restitution: 0.05,
-    label: `cup-wall-${id}`,
-  });
-
-  Matter.World.add(world, [floor, leftWall, rightWall]);
-  return { floor, leftWall, rightWall, floorY };
+  Matter.World.add(world, segments);
+  return { segments, restY: y + (CUP_RADIUS - BALL_RADIUS) };
 }
 
 /**

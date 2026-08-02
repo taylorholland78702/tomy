@@ -14,15 +14,16 @@ import {
   updateBubbles,
   PhysicsWorld,
   WATER_FRICTION_AIR,
+  BALL_RADIUS,
+  CUP_RADIUS,
 } from '../physics/engine';
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
 
-/** SVG path for a rounded basket trough matching createCup's geometry (mouth at y, floor at y + radius*0.55). */
-function cupPath(x: number, y: number, radius: number) {
-  const floorY = y + radius * 0.55;
-  return `M ${x - radius} ${y} L ${x - radius * 0.9} ${floorY - 4} Q ${x - radius * 0.9} ${floorY} ${x - radius * 0.6} ${floorY} L ${x + radius * 0.6} ${floorY} Q ${x + radius * 0.9} ${floorY} ${x + radius * 0.9} ${floorY - 4} L ${x + radius} ${y}`;
+/** SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS). */
+function cupPath(x: number, y: number) {
+  return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 1 ${x + CUP_RADIUS} ${y}`;
 }
 
 interface Props {
@@ -65,13 +66,13 @@ export function GameCanvas({ level, onComplete }: Props) {
     createSupportBar(pw.world, width, barY);
 
     level.targets.forEach((target) => {
-      createCup(pw.world, target.x, target.y, target.radius, target.id);
+      createCup(pw.world, target.x, target.y, target.id);
     });
 
     const ballSpacing = Math.min(70, (width - 80) / Math.max(level.ballCount - 1, 1));
     const rowStartX = width / 2 - (ballSpacing * (level.ballCount - 1)) / 2;
     const balls = level.ballColors.slice(0, level.ballCount).map((color, i) =>
-      Matter.Bodies.circle(rowStartX + i * ballSpacing, barY - 26, 18, {
+      Matter.Bodies.circle(rowStartX + i * ballSpacing, barY - 26, BALL_RADIUS, {
         restitution: 0.4,
         frictionAir: WATER_FRICTION_AIR,
         label: `ball-${color}`,
@@ -147,7 +148,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         {level.targets.map((t) => (
           <Path
             key={t.id}
-            d={cupPath(t.x, t.y, t.radius)}
+            d={cupPath(t.x, t.y)}
             fill={filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
             stroke={filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
             strokeWidth={2}
@@ -198,9 +199,9 @@ const styles = StyleSheet.create({
 });
 
 /**
- * A target counts as "filled" once a ball is physically resting inside its cup — inside the
- * floor's horizontal span and within a settle band above the floor, moving slowly. The cup's
- * walls (see createCup) are what makes "resting" possible at all; this just detects it.
+ * A target counts as "filled" once a ball is physically resting in its bowl — near the bottom of
+ * the semicircular arc (see createCup's restY), moving slowly. The cup's arc segments are what
+ * make "resting" possible at all; this just detects it.
  */
 function checkTargets(
   pw: PhysicsWorld,
@@ -217,17 +218,13 @@ function checkTargets(
   for (const target of level.targets as TargetConfig[]) {
     if (filled.has(target.id)) continue;
 
-    // A ball can rest anywhere between the flared mouth and the floor — corners of the rigid
-    // wall bodies sometimes catch it above the true floor line — so treat the whole basket
-    // interior as "caught", not just the floor.
-    const floorY = target.y + target.radius * 0.55;
-    const mouthY = target.y - target.radius * 0.3;
+    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
     for (const ball of balls) {
       const dx = ball.position.x - target.x;
+      const dy = ball.position.y - restY;
       const settled = Math.abs(ball.velocity.x) < 1.2 && Math.abs(ball.velocity.y) < 1.2;
-      const inBasket = ball.position.y > mouthY && ball.position.y < floorY + target.radius * 0.3;
 
-      if (Math.abs(dx) < target.radius * 0.85 && inBasket && settled) {
+      if (Math.abs(dx) < CUP_RADIUS * 0.5 && Math.abs(dy) < BALL_RADIUS * 0.5 && settled) {
         filled.add(target.id);
         changed = true;
         hapticLanding();
