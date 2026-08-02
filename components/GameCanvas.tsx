@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Dimensions } from 'react-native';
+import { View, Dimensions, Pressable, Text, StyleSheet } from 'react-native';
 import Matter from 'matter-js';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { Tank } from './Tank';
@@ -54,7 +54,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
 
-  useTiltGravity(physicsRef.current?.engine ?? null);
+  const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
   const barY = height - SUPPORT_BAR_OFFSET_FROM_BOTTOM;
 
@@ -165,9 +165,37 @@ export function GameCanvas({ level, onComplete }: Props) {
         ))}
       </Svg>
       <AirJetButton onHoldChange={handleHoldChange} />
+      {needsPermission && (
+        <View style={styles.permissionOverlay} pointerEvents="box-none">
+          <Pressable style={styles.permissionButton} onPress={requestPermission}>
+            <Text style={styles.permissionButtonText}>Enable Tilt Controls</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  permissionOverlay: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+  },
+  permissionButton: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  permissionButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+});
 
 /**
  * A target counts as "filled" once a ball is physically resting inside its cup — inside the
