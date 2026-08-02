@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Dimensions, Pressable, Text, StyleSheet } from 'react-native';
 import Matter from 'matter-js';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { Tank } from './Tank';
 import { AirJetButton } from './AirJetButton';
 import {
@@ -30,6 +30,18 @@ import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
 function cupPath(x: number, y: number) {
   return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 0 ${x + CUP_RADIUS} ${y}`;
 }
+
+/** Lightens (positive percent) or darkens (negative) a "#rrggbb" color for gradient shading. */
+function shadeColor(hex: string, percent: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = clamp(((num >> 16) & 0xff) + 255 * percent);
+  const g = clamp(((num >> 8) & 0xff) + 255 * percent);
+  const b = clamp((num & 0xff) + 255 * percent);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+const ballGradientId = (color: string) => `ball-grad-${color.replace('#', '')}`;
 
 interface Props {
   level: LevelConfig;
@@ -71,7 +83,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     createSupportBar(pw.world, width, barY);
 
     level.targets.forEach((target) => {
-      createCup(pw.world, target.x, target.y, target.id);
+      createCup(pw.world, width / 2 + target.dx, target.y, target.id);
     });
 
     const ballSpacing = Math.min(70, (width - 80) / Math.max(level.ballCount - 1, 1));
@@ -103,7 +115,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       updateBubbles(pw.world);
 
       Matter.Engine.update(pw.engine, delta);
-      const filledChanged = checkTargets(pw, level, filledRef.current, wonRef, () => {
+      const filledChanged = checkTargets(pw, level, width, filledRef.current, wonRef, () => {
         hapticLevelComplete();
         setTimeout(onComplete, 1200);
       });
@@ -140,6 +152,15 @@ export function GameCanvas({ level, onComplete }: Props) {
     <View style={{ flex: 1 }}>
       <Tank width={width} height={height} />
       <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
+        <Defs>
+          {Array.from(new Set(level.ballColors)).map((color) => (
+            <RadialGradient key={color} id={ballGradientId(color)} cx="35%" cy="30%" r="75%">
+              <Stop offset="0%" stopColor={shadeColor(color, 0.55)} />
+              <Stop offset="55%" stopColor={color} />
+              <Stop offset="100%" stopColor={shadeColor(color, -0.35)} />
+            </RadialGradient>
+          ))}
+        </Defs>
         <Rect
           x={width * 0.09}
           y={barY - 7}
@@ -153,7 +174,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         {level.targets.map((t) => (
           <Path
             key={t.id}
-            d={cupPath(t.x, t.y)}
+            d={cupPath(width / 2 + t.dx, t.y)}
             fill={filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
             stroke={filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
             strokeWidth={5}
@@ -166,7 +187,7 @@ export function GameCanvas({ level, onComplete }: Props) {
             cx={b.x}
             cy={b.y}
             r={b.radius}
-            fill={b.isBubble ? 'rgba(255,255,255,0.55)' : b.color}
+            fill={b.isBubble ? 'rgba(255,255,255,0.55)' : `url(#${ballGradientId(b.color)})`}
             opacity={b.isBubble ? 0.6 : 1}
           />
         ))}
@@ -212,6 +233,7 @@ const styles = StyleSheet.create({
 function checkTargets(
   pw: PhysicsWorld,
   level: LevelConfig,
+  width: number,
   filled: Set<string>,
   wonRef: React.MutableRefObject<boolean>,
   onWin: () => void
@@ -224,13 +246,14 @@ function checkTargets(
   for (const target of level.targets as TargetConfig[]) {
     if (filled.has(target.id)) continue;
 
+    const targetX = width / 2 + target.dx;
     const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
     for (const ball of balls) {
-      const dx = ball.position.x - target.x;
-      const dy = ball.position.y - restY;
+      const deltaX = ball.position.x - targetX;
+      const deltaY = ball.position.y - restY;
       const settled = Math.abs(ball.velocity.x) < 1.2 && Math.abs(ball.velocity.y) < 1.2;
 
-      if (Math.abs(dx) < CUP_RADIUS * 0.5 && Math.abs(dy) < BALL_RADIUS * 0.5 && settled) {
+      if (Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled) {
         filled.add(target.id);
         changed = true;
         hapticLanding();
