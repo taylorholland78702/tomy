@@ -51,12 +51,14 @@ export interface RampInfo extends RampPoints {
 /**
  * Geometry for the V-shaped double ramp, factored out so physics and rendering always agree:
  * two straight ramps meeting at a centered low point directly beneath the Air Jet button.
+ * The ends overlap the tank's side walls (not just approach them) so there's no gap a ball could
+ * slip through and fall past the ramp down to the bottom of the tank.
  */
 export function computeRampPoints(width: number, baseY: number): RampPoints {
   return {
-    leftPoint: { x: width * 0.08, y: baseY - 32 },
+    leftPoint: { x: -10, y: baseY - 32 },
     lowPoint: { x: width * 0.5, y: baseY },
-    rightPoint: { x: width * 0.92, y: baseY - 32 },
+    rightPoint: { x: width + 10, y: baseY - 32 },
   };
 }
 

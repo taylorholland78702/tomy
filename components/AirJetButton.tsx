@@ -7,8 +7,14 @@ interface Props {
   onHoldChange: (active: boolean) => void;
 }
 
-const BUTTON_SIZE = 92;
+const BUTTON_SIZE = 57;
 const SOCKET_SIZE = BUTTON_SIZE + 18;
+/**
+ * Chosen so the gap between the ramp's low point (baseY = tank height - 175, see
+ * RAMP_OFFSET_FROM_BOTTOM in GameCanvas) and the top of the socket equals the gap between the
+ * socket's bottom and the screen edge: (175 - SOCKET_SIZE) / 2 = (175 - 75) / 2 = 50 on each side.
+ */
+const SOCKET_BOTTOM_OFFSET = 50;
 
 /**
  * Single circular Air Jet push button styled like a classic Tomy handheld's white plastic
@@ -54,7 +60,7 @@ export function AirJetButton({ onHoldChange }: Props) {
 const styles = StyleSheet.create({
   socket: {
     position: 'absolute',
-    bottom: 44,
+    bottom: SOCKET_BOTTOM_OFFSET,
     alignSelf: 'center',
     width: SOCKET_SIZE,
     height: SOCKET_SIZE,
