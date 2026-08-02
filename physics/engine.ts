@@ -37,15 +37,64 @@ export function createPhysicsWorld(width: number, height: number): PhysicsWorld 
   return { engine, world, walls };
 }
 
-/** Static horizontal ledge near the tank bottom that balls rest on before the jet lifts them. */
-export function createSupportBar(world: Matter.World, width: number, y: number) {
-  const bar = Matter.Bodies.rectangle(width / 2, y, width * 0.82, 14, {
+export interface RampPoints {
+  leftPoint: { x: number; y: number };
+  lowPoint: { x: number; y: number };
+  rightPoint: { x: number; y: number };
+}
+
+export interface RampInfo extends RampPoints {
+  leftSeg: Matter.Body;
+  rightSeg: Matter.Body;
+}
+
+/**
+ * Geometry for the V-shaped double ramp, factored out so physics and rendering always agree:
+ * two straight ramps meeting at a low point that's deliberately off-center (skewed toward one
+ * side, matching the real Waterfuls toy), not a flat bar or a centered V.
+ */
+export function computeRampPoints(width: number, baseY: number): RampPoints {
+  return {
+    leftPoint: { x: width * 0.08, y: baseY - 18 },
+    lowPoint: { x: width * 0.32, y: baseY },
+    rightPoint: { x: width * 0.92, y: baseY - 46 },
+  };
+}
+
+function rampSegment(x1: number, y1: number, x2: number, y2: number, thickness: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+  return Matter.Bodies.rectangle((x1 + x2) / 2, (y1 + y2) / 2, length, thickness, {
     isStatic: true,
-    label: 'support-bar',
-    chamfer: { radius: 6 },
+    angle,
+    label: 'ramp',
+    chamfer: { radius: thickness / 2 },
   });
-  Matter.World.add(world, bar);
-  return bar;
+}
+
+export function createVRamp(world: Matter.World, width: number, baseY: number): RampInfo {
+  const thickness = 14;
+  const { leftPoint, lowPoint, rightPoint } = computeRampPoints(width, baseY);
+
+  const leftSeg = rampSegment(leftPoint.x, leftPoint.y, lowPoint.x, lowPoint.y, thickness);
+  const rightSeg = rampSegment(lowPoint.x, lowPoint.y, rightPoint.x, rightPoint.y, thickness);
+  Matter.World.add(world, [leftSeg, rightSeg]);
+
+  return { leftSeg, rightSeg, leftPoint, lowPoint, rightPoint };
+}
+
+/** Small static bumper peg — purely an obstacle balls bounce and thread between, like the pegs between cups on the real toy. */
+export function createPeg(world: Matter.World, x: number, y: number, radius = 6) {
+  const peg = Matter.Bodies.circle(x, y, radius, {
+    isStatic: true,
+    restitution: 0.6,
+    friction: 0.4,
+    label: 'peg',
+  });
+  Matter.World.add(world, peg);
+  return peg;
 }
 
 /** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */

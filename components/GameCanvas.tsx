@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Dimensions, Pressable, Text, StyleSheet } from 'react-native';
 import Matter from 'matter-js';
-import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, Path, RadialGradient, Stop } from 'react-native-svg';
 import { Tank } from './Tank';
 import { AirJetButton } from './AirJetButton';
 import {
   createPhysicsWorld,
-  createSupportBar,
+  createVRamp,
+  createPeg,
   createCup,
+  computeRampPoints,
   applyWaterPhysics,
   applyAirJet,
   spawnBubble,
@@ -59,7 +61,7 @@ interface RenderBody {
 
 const JET_STRENGTH = 0.0026;
 const JET_COLUMN_HALF_WIDTH = 90;
-const SUPPORT_BAR_OFFSET_FROM_BOTTOM = 175;
+const RAMP_OFFSET_FROM_BOTTOM = 175;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -68,33 +70,46 @@ export function GameCanvas({ level, onComplete }: Props) {
   const filledRef = useRef<Set<string>>(new Set());
   const wonRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const jetXRef = useRef(width / 2);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
-  const barY = height - SUPPORT_BAR_OFFSET_FROM_BOTTOM;
+  const rampBaseY = height - RAMP_OFFSET_FROM_BOTTOM;
+  const ramp = computeRampPoints(width, rampBaseY);
 
   useEffect(() => {
     const pw = createPhysicsWorld(width, height);
     physicsRef.current = pw;
     setEngineVersion((v) => v + 1);
-    createSupportBar(pw.world, width, barY);
+    const rampInfo = createVRamp(pw.world, width, rampBaseY);
+    jetXRef.current = rampInfo.lowPoint.x;
 
     level.targets.forEach((target) => {
       createCup(pw.world, width / 2 + target.dx, target.y, target.id);
     });
 
-    const ballSpacing = Math.min(70, (width - 80) / Math.max(level.ballCount - 1, 1));
-    const rowStartX = width / 2 - (ballSpacing * (level.ballCount - 1)) / 2;
-    const balls = level.ballColors.slice(0, level.ballCount).map((color, i) =>
-      Matter.Bodies.circle(rowStartX + i * ballSpacing, barY - 26, BALL_RADIUS, {
+    level.pegs.forEach((peg) => {
+      createPeg(pw.world, width / 2 + peg.dx, peg.y);
+    });
+
+    // Cluster balls in a small grid above the ramp's low point, like the pooled balls on the
+    // real toy, instead of a single spread-out row.
+    const cols = Math.min(6, level.ballCount);
+    const spacing = BALL_RADIUS * 2 + 4;
+    const balls = level.ballColors.slice(0, level.ballCount).map((color, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const rowCount = Math.min(cols, level.ballCount - row * cols);
+      const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
+      return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, {
         restitution: 0.4,
         frictionAir: WATER_FRICTION_AIR,
         label: `ball-${color}`,
-      })
-    );
+      });
+    });
     Matter.World.add(pw.world, balls);
 
     filledRef.current = new Set();
@@ -109,8 +124,8 @@ export function GameCanvas({ level, onComplete }: Props) {
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
 
       if (jetActiveRef.current) {
-        applyAirJet(pw.world, width / 2, JET_STRENGTH, JET_COLUMN_HALF_WIDTH);
-        if (Math.random() < 0.45) spawnBubble(pw.world, width / 2, height - 80);
+        applyAirJet(pw.world, jetXRef.current, JET_STRENGTH, JET_COLUMN_HALF_WIDTH);
+        if (Math.random() < 0.45) spawnBubble(pw.world, jetXRef.current, height - 80);
       }
       updateBubbles(pw.world);
 
@@ -161,16 +176,27 @@ export function GameCanvas({ level, onComplete }: Props) {
             </RadialGradient>
           ))}
         </Defs>
-        <Rect
-          x={width * 0.09}
-          y={barY - 7}
-          width={width * 0.82}
-          height={14}
-          rx={7}
-          fill="rgba(255,255,255,0.35)"
-          stroke="rgba(255,255,255,0.6)"
-          strokeWidth={1}
+        <Line
+          x1={ramp.leftPoint.x}
+          y1={ramp.leftPoint.y}
+          x2={ramp.lowPoint.x}
+          y2={ramp.lowPoint.y}
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth={7}
+          strokeLinecap="round"
         />
+        <Line
+          x1={ramp.lowPoint.x}
+          y1={ramp.lowPoint.y}
+          x2={ramp.rightPoint.x}
+          y2={ramp.rightPoint.y}
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth={7}
+          strokeLinecap="round"
+        />
+        {level.pegs.map((p) => (
+          <Circle key={p.id} cx={width / 2 + p.dx} cy={p.y} r={6} fill="rgba(255,255,255,0.55)" stroke="rgba(255,255,255,0.8)" strokeWidth={1} />
+        ))}
         {level.targets.map((t) => (
           <Path
             key={t.id}
@@ -192,7 +218,7 @@ export function GameCanvas({ level, onComplete }: Props) {
           />
         ))}
       </Svg>
-      <AirJetButton onHoldChange={handleHoldChange} />
+      <AirJetButton onHoldChange={handleHoldChange} centerX={ramp.lowPoint.x} />
       {needsPermission && (
         <View style={styles.permissionOverlay} pointerEvents="box-none">
           <Pressable style={styles.permissionButton} onPress={requestPermission}>
