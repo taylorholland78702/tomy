@@ -226,9 +226,10 @@ const styles = StyleSheet.create({
 });
 
 /**
- * A target counts as "filled" once a ball is physically resting in its bowl — near the bottom of
- * the semicircular arc (see createCup's restY), moving slowly. The cup's arc segments are what
- * make "resting" possible at all; this just detects it.
+ * A target counts as "filled" only while a ball is currently resting in its bowl — near the
+ * bottom of the semicircular arc (see createCup's restY), moving slowly. Re-evaluated every
+ * frame in both directions: a cup un-fills the moment its ball is knocked out or lifted back
+ * out by the jet, not just once when a ball first lands.
  */
 function checkTargets(
   pw: PhysicsWorld,
@@ -244,21 +245,23 @@ function checkTargets(
   let changed = false;
 
   for (const target of level.targets as TargetConfig[]) {
-    if (filled.has(target.id)) continue;
-
     const targetX = width / 2 + target.dx;
     const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
-    for (const ball of balls) {
+
+    const occupied = balls.some((ball) => {
       const deltaX = ball.position.x - targetX;
       const deltaY = ball.position.y - restY;
       const settled = Math.abs(ball.velocity.x) < 1.2 && Math.abs(ball.velocity.y) < 1.2;
+      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
+    });
 
-      if (Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled) {
-        filled.add(target.id);
-        changed = true;
-        hapticLanding();
-        break;
-      }
+    if (occupied && !filled.has(target.id)) {
+      filled.add(target.id);
+      changed = true;
+      hapticLanding();
+    } else if (!occupied && filled.has(target.id)) {
+      filled.delete(target.id);
+      changed = true;
     }
   }
 
