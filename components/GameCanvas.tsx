@@ -21,9 +21,14 @@ import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
 
-/** SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS). */
+/**
+ * SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS).
+ * sweep-flag=0 (not 1) is what picks the lower arc here — sweep=1 traces the arc through
+ * increasing angle in SVG's y-down space, which passes through the *top* point first, drawing a
+ * dome instead of a bowl.
+ */
 function cupPath(x: number, y: number) {
-  return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 1 ${x + CUP_RADIUS} ${y}`;
+  return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 0 ${x + CUP_RADIUS} ${y}`;
 }
 
 interface Props {
@@ -151,7 +156,8 @@ export function GameCanvas({ level, onComplete }: Props) {
             d={cupPath(t.x, t.y)}
             fill={filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
             stroke={filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
-            strokeWidth={2}
+            strokeWidth={5}
+            strokeLinecap="round"
           />
         ))}
         {renderBodies.map((b) => (
