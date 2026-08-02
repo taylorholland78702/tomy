@@ -1,62 +1,91 @@
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
 interface Props {
   onHoldChange: (active: boolean) => void;
 }
 
-/** Single circular Air Jet push button, bottom-center. Heavy tap on press, soft ticks while held. */
+const BUTTON_SIZE = 92;
+const SOCKET_SIZE = BUTTON_SIZE + 18;
+
+/**
+ * Single circular Air Jet push button styled like a classic Tomy handheld's white plastic
+ * button: a glossy raised dome sitting in a recessed dark socket, pressing down and flattening
+ * its shadow when held. Heavy tap on press, soft ticks while held.
+ */
 export function AirJetButton({ onHoldChange }: Props) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const pressAnim = useRef(new Animated.Value(0)).current; // 0 = raised, 1 = pressed in
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPress = () => {
     hapticJetPress();
     onHoldChange(true);
-    Animated.spring(scale, { toValue: 0.88, useNativeDriver: true }).start();
+    Animated.spring(pressAnim, { toValue: 1, useNativeDriver: true, friction: 6 }).start();
     holdInterval.current = setInterval(hapticJetHoldTick, 180);
   };
 
   const endPress = () => {
     onHoldChange(false);
-    Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+    Animated.spring(pressAnim, { toValue: 0, useNativeDriver: true, friction: 4 }).start();
     if (holdInterval.current) {
       clearInterval(holdInterval.current);
       holdInterval.current = null;
     }
   };
 
+  const scale = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] });
+  const translateY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 3] });
+
   return (
-    <Animated.View style={[styles.wrap, { transform: [{ scale }] }]}>
-      <Pressable onPressIn={startPress} onPressOut={endPress} style={styles.button}>
-        <Animated.View style={styles.buttonInner} />
-      </Pressable>
+    <Animated.View style={styles.socket}>
+      <Animated.View style={[styles.buttonWrap, { transform: [{ scale }, { translateY }] }]}>
+        <Pressable onPressIn={startPress} onPressOut={endPress}>
+          <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
+            <Animated.View style={styles.highlight} />
+          </LinearGradient>
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  socket: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 44,
     alignSelf: 'center',
-  },
-  button: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.85)',
+    width: SOCKET_SIZE,
+    height: SOCKET_SIZE,
+    borderRadius: SOCKET_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0px 0px 12px rgba(59, 255, 224, 0.8)',
+    boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4)',
   },
-  buttonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#3BFFE0',
+  buttonWrap: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    boxShadow: '0px 6px 8px rgba(0,0,0,0.4)',
+  },
+  buttonFace: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  highlight: {
+    position: 'absolute',
+    top: BUTTON_SIZE * 0.14,
+    left: BUTTON_SIZE * 0.2,
+    width: BUTTON_SIZE * 0.5,
+    height: BUTTON_SIZE * 0.26,
+    borderRadius: BUTTON_SIZE * 0.25,
+    backgroundColor: 'rgba(255,255,255,0.8)',
   },
 });

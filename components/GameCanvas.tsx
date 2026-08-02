@@ -59,7 +59,7 @@ interface RenderBody {
 
 const JET_STRENGTH = 0.0026;
 const JET_COLUMN_HALF_WIDTH = 90;
-const SUPPORT_BAR_OFFSET_FROM_BOTTOM = 130;
+const SUPPORT_BAR_OFFSET_FROM_BOTTOM = 175;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
