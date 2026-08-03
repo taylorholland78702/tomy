@@ -74,6 +74,8 @@ const JET_FAN_RATE = 0.18;
  * balls rising from the ramp still reliably reach that height on momentum.
  */
 const JET_VERTICAL_RANGE = 490;
+/** Tangential force around the jet's mid-height point — the "swirl/convection loop" feel. */
+const JET_SWIRL_STRENGTH = 0.0016;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00035;
@@ -154,7 +156,8 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_STRENGTH,
           JET_BASE_COLUMN_HALF_WIDTH,
           JET_VERTICAL_RANGE,
-          JET_FAN_RATE
+          JET_FAN_RATE,
+          JET_SWIRL_STRENGTH
         );
         spawnBubble(pw.world, jetXRef.current, height - 80);
       }

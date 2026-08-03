@@ -196,6 +196,10 @@ export function applyRampGuide(bodies: Matter.Body[], rampLowX: number, rampBase
  * (weaker, but nonzero) plume is wide enough to reach dx columns it wouldn't touch near the
  * bottom, so a held press can gradually jiggle — and occasionally knock loose — an off-center
  * ball, while a dead-center resting ball still gets zero force once verticalRange is exceeded.
+ *
+ * On top of the lift, adds a tangential (rotational) force around a fixed point mid-way up the
+ * jet's range, so motion curls into a swirl/convection loop rather than traveling straight up —
+ * matching how water actually circulates in a real Waterfuls toy instead of shooting like a hose.
  */
 export function applyAirJet(
   world: Matter.World,
@@ -204,9 +208,12 @@ export function applyAirJet(
   strength: number,
   baseColumnHalfWidth: number,
   verticalRange: number,
-  fanRate: number
+  fanRate: number,
+  swirlStrength: number
 ) {
   const bodies = Matter.Composite.allBodies(world);
+  const swirlCenterY = jetY - verticalRange * 0.5;
+
   for (const body of bodies) {
     if (body.isStatic) continue;
 
@@ -223,9 +230,15 @@ export function applyAirJet(
     const falloff = horizontalFalloff * verticalFalloff;
     if (falloff <= 0) continue;
 
+    const relX = body.position.x - jetX;
+    const relY = body.position.y - swirlCenterY;
+    const dist = Math.hypot(relX, relY) || 1;
+    const tangentialX = (-relY / dist) * swirlStrength * falloff;
+    const tangentialY = (relX / dist) * swirlStrength * falloff;
+
     Matter.Body.applyForce(body, body.position, {
-      x: -dx * 0.00002 * falloff,
-      y: -strength * falloff,
+      x: -dx * 0.00002 * falloff + tangentialX,
+      y: -strength * falloff + tangentialY,
     });
   }
 }
