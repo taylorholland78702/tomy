@@ -77,7 +77,7 @@ const JET_FAN_RATE = 0.14;
  */
 const JET_VERTICAL_RANGE = 490;
 /** Tangential force around the jet's mid-height point — the "swirl/convection loop" feel. */
-const JET_SWIRL_STRENGTH = 0.0003;
+const JET_SWIRL_STRENGTH = 0.0007;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00145;
@@ -136,7 +136,10 @@ export function GameCanvas({ level, onComplete }: Props) {
       const rowCount = Math.min(cols, level.ballCount - row * cols);
       const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
       return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, {
-        restitution: 0.4,
+        // Higher than before (0.4) so balls bounce apart on contact rather than settling into a
+        // clumped pile — low restitution combined with the ramp's constant pull toward its low
+        // point made resting balls read as "stuck together".
+        restitution: 0.6,
         frictionAir: WATER_FRICTION_AIR,
         // Lighter than matter's circle default (0.001) so the jet's forces — which aren't
         // mass-scaled — push these around more, and low friction so they roll down the ramp

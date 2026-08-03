@@ -212,13 +212,18 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 export function applyRampGuide(bodies: Matter.Body[], rampLowX: number, rampBaseY: number, strength: number) {
   const activeZoneAbove = 70;
   const activeZoneBelow = 40;
+  // Bigger than one ball's diameter: once a ball is already this close to the low point, stop
+  // shoving it — a constant push all the way down to a couple of px keeps every resting ball
+  // fighting for the exact same spot instead of settling side by side, which reads as balls
+  // "sticking together" rather than resting naturally next to each other.
+  const deadZone = 24;
   for (const body of bodies) {
     if (body.isStatic || body.label === 'bubble') continue;
     const heightAboveBase = rampBaseY - body.position.y;
     if (heightAboveBase > activeZoneAbove || heightAboveBase < -activeZoneBelow) continue;
 
     const dx = body.position.x - rampLowX;
-    if (Math.abs(dx) < 2) continue;
+    if (Math.abs(dx) < deadZone) continue;
     Matter.Body.applyForce(body, body.position, { x: -Math.sign(dx) * strength * body.mass, y: 0 });
   }
 }
