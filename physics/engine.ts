@@ -11,7 +11,7 @@ export const BUOYANCY_ACCEL = 0.0006;
  * velocity damper each step. Do NOT reimplement drag as `applyForce(-k*v)`: matter-js scales
  * applyForce by deltaTime^2 (~278 at 60fps), so a velocity-proportional force resonates into an
  * exponential blowup within a handful of frames instead of damping. */
-export const WATER_FRICTION_AIR = 0.02;
+export const WATER_FRICTION_AIR = 0.012;
 
 export interface PhysicsWorld {
   engine: Matter.Engine;
@@ -73,8 +73,8 @@ function rampSegment(x1: number, y1: number, x2: number, y2: number, thickness: 
     label: 'ramp',
     chamfer: { radius: thickness / 2 },
     // Low friction so balls roll/slide down to the low point instead of sticking partway.
-    friction: 0.01,
-    frictionStatic: 0.02,
+    friction: 0.003,
+    frictionStatic: 0.006,
   });
 }
 
@@ -161,6 +161,29 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
       x: (Math.random() - 0.5) * TURBULENCE_STRENGTH * body.mass,
       y: (Math.random() - 0.5) * TURBULENCE_STRENGTH * body.mass,
     });
+  }
+}
+
+/**
+ * Gently pulls balls sitting near the ramp horizontally toward its low point, on top of (not
+ * instead of) the ramp's own incline. The ramp's true slope-driven roll is barely noticeable
+ * because BUOYANCY_ACCEL is deliberately close to gravity (for the "light/floaty" feel), which
+ * leaves almost no net downward force — and with the incline only ~9 degrees, the resulting
+ * tangential pull is tiny regardless of how low ramp/ball friction is set. This models the V
+ * shape's guiding effect directly so balls reliably roll to the bottom at a natural pace,
+ * without having to fight buoyancy tuning elsewhere to get there.
+ */
+export function applyRampGuide(bodies: Matter.Body[], rampLowX: number, rampBaseY: number, strength: number) {
+  const activeZoneAbove = 70;
+  const activeZoneBelow = 40;
+  for (const body of bodies) {
+    if (body.isStatic || body.label === 'bubble') continue;
+    const heightAboveBase = rampBaseY - body.position.y;
+    if (heightAboveBase > activeZoneAbove || heightAboveBase < -activeZoneBelow) continue;
+
+    const dx = body.position.x - rampLowX;
+    if (Math.abs(dx) < 2) continue;
+    Matter.Body.applyForce(body, body.position, { x: -Math.sign(dx) * strength * body.mass, y: 0 });
   }
 }
 

@@ -11,6 +11,7 @@ import {
   createCup,
   computeRampPoints,
   applyWaterPhysics,
+  applyRampGuide,
   applyAirJet,
   spawnBubble,
   updateBubbles,
@@ -74,6 +75,8 @@ const JET_FAN_RATE = 0.18;
  */
 const JET_VERTICAL_RANGE = 490;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
+/** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
+const RAMP_GUIDE_STRENGTH = 0.00035;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -125,7 +128,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         // mass-scaled — push these around more, and low friction so they roll down the ramp
         // instead of sticking to it.
         density: BALL_DENSITY,
-        friction: 0.02,
+        friction: 0.006,
         label: `ball-${color}`,
       });
     });
@@ -141,6 +144,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       lastTime = now;
 
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
+      applyRampGuide(Matter.Composite.allBodies(pw.world), jetXRef.current, rampBaseY, RAMP_GUIDE_STRENGTH);
 
       if (jetActiveRef.current) {
         applyAirJet(
