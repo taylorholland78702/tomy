@@ -59,6 +59,8 @@ interface RenderBody {
   isBubble: boolean;
 }
 
+/** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
+const BALL_DENSITY = 0.0005;
 const JET_STRENGTH = 0.005;
 /** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
 const JET_BASE_COLUMN_HALF_WIDTH = 50;
@@ -119,6 +121,11 @@ export function GameCanvas({ level, onComplete }: Props) {
       return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, {
         restitution: 0.4,
         frictionAir: WATER_FRICTION_AIR,
+        // Lighter than matter's circle default (0.001) so the jet's forces — which aren't
+        // mass-scaled — push these around more, and low friction so they roll down the ramp
+        // instead of sticking to it.
+        density: BALL_DENSITY,
+        friction: 0.02,
         label: `ball-${color}`,
       });
     });

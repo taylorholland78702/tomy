@@ -72,6 +72,9 @@ function rampSegment(x1: number, y1: number, x2: number, y2: number, thickness: 
     angle,
     label: 'ramp',
     chamfer: { radius: thickness / 2 },
+    // Low friction so balls roll/slide down to the low point instead of sticking partway.
+    friction: 0.01,
+    frictionStatic: 0.02,
   });
 }
 

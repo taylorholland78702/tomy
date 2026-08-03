@@ -25,7 +25,7 @@ export interface LevelConfig {
   ballColors: string[];
 }
 
-const NINE_CUP_BALL_PALETTE = [
+const BALL_PALETTE = [
   '#FF3B7F',
   '#8A5CFF',
   '#FFD23B',
@@ -37,65 +37,62 @@ const NINE_CUP_BALL_PALETTE = [
   '#FFD23B',
 ];
 
-/**
- * Data-driven level list. Phase 1 (baskets) is fully playable; phase 2 (rings)
- * reuses the same ball/target-proximity win check as a starting point — swap in
- * peg-specific collision geometry when building out ring-toss properly.
- */
+// Shared 3x3 grid coordinates (matching the real Waterfuls toy), reused across levels so each
+// level is just a subset of rows — top row alone, top+middle, then the full grid.
+const TOP_ROW: TargetConfig[] = [
+  { id: 't1', dx: -110, y: 140 },
+  { id: 't2', dx: 0, y: 130 },
+  { id: 't3', dx: 110, y: 140 },
+];
+const MIDDLE_ROW: TargetConfig[] = [
+  { id: 't4', dx: -110, y: 230 },
+  { id: 't5', dx: 0, y: 220 },
+  { id: 't6', dx: 110, y: 230 },
+];
+const BOTTOM_ROW: TargetConfig[] = [
+  { id: 't7', dx: -110, y: 320 },
+  { id: 't8', dx: 0, y: 310 },
+  { id: 't9', dx: 110, y: 320 },
+];
+const PEGS_ROW_1: PegConfig[] = [
+  { id: 'p1', dx: -55, y: 185 },
+  { id: 'p2', dx: 55, y: 185 },
+];
+const PEGS_ROW_2: PegConfig[] = [
+  { id: 'p3', dx: -55, y: 275 },
+  { id: 'p4', dx: 55, y: 275 },
+];
+
+/** Data-driven level list: a 3 -> 6 -> 9 cup progression, all sharing the same grid layout. */
 export const LEVELS: LevelConfig[] = [
   {
-    id: 'phase1-1',
+    id: 'level-1',
     phase: 1,
+    type: 'baskets',
+    name: 'Three Cups',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+  },
+  {
+    id: 'level-2',
+    phase: 2,
+    type: 'baskets',
+    name: 'Six Cups',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+  },
+  {
+    id: 'level-3',
+    phase: 3,
     type: 'baskets',
     name: 'Nine Cups',
-    // 3x3 grid matching the real Waterfuls toy: 9 cups, 9 balls, with small pegs nestled in the
-    // gaps between cups.
-    targets: [
-      { id: 't1', dx: -110, y: 140 },
-      { id: 't2', dx: 0, y: 130 },
-      { id: 't3', dx: 110, y: 140 },
-      { id: 't4', dx: -110, y: 230 },
-      { id: 't5', dx: 0, y: 220 },
-      { id: 't6', dx: 110, y: 230 },
-      { id: 't7', dx: -110, y: 320 },
-      { id: 't8', dx: 0, y: 310 },
-      { id: 't9', dx: 110, y: 320 },
-    ],
-    pegs: [
-      { id: 'p1', dx: -55, y: 185 },
-      { id: 'p2', dx: 55, y: 185 },
-      { id: 'p3', dx: -55, y: 275 },
-      { id: 'p4', dx: 55, y: 275 },
-    ],
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
-    ballColors: NINE_CUP_BALL_PALETTE,
-  },
-  {
-    id: 'phase1-2',
-    phase: 1,
-    type: 'baskets',
-    name: 'Four Baskets',
-    targets: [
-      { id: 't1', dx: -150, y: 190 },
-      { id: 't2', dx: -50, y: 160 },
-      { id: 't3', dx: 50, y: 160 },
-      { id: 't4', dx: 150, y: 190 },
-    ],
-    pegs: [],
-    ballCount: 4,
-    ballColors: ['#FF3B7F', '#3BD6FF', '#FFD23B', '#8A5CFF'],
-  },
-  {
-    id: 'phase2-1',
-    phase: 2,
-    type: 'rings',
-    name: 'Ring Toss',
-    targets: [
-      { id: 'peg1', dx: -60, y: 170 },
-      { id: 'peg2', dx: 60, y: 170 },
-    ],
-    pegs: [],
-    ballCount: 2,
-    ballColors: ['#FF7A3B', '#3BFFA0'],
+    ballColors: BALL_PALETTE,
   },
 ];

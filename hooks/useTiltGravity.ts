@@ -7,6 +7,17 @@ const GRAVITY_SCALE = 1.1;
 const SMOOTHING = 0.15;
 const UPDATE_INTERVAL_MS = 16;
 const EARTH_GRAVITY_MS2 = 9.81;
+/**
+ * Below this much in-plane tilt (g), treat the device as flat rather than trusting the raw
+ * x/y reading. When a phone lies flat on a table, gravity projects almost entirely onto the
+ * device's z-axis — accelerometer x/y read near zero, which used to get applied directly as
+ * engine.gravity, i.e. "no downward pull in the screen plane at all". But buoyancy (see
+ * BUOYANCY_ACCEL in physics/engine.ts) is a constant upward force independent of tilt, so with
+ * zero counteracting gravity every ball floated straight to the top. Falling back to the default
+ * resting gravity (0, 1) here instead means "flat" behaves like "not tilted" — balls just stay
+ * where they are — and only a deliberate, larger tilt (including flipping top-down) overrides it.
+ */
+const FLAT_MAGNITUDE_THRESHOLD = 0.15;
 
 export interface TiltGravityControls {
   /** True once we know tilt needs an explicit user tap to unlock (iOS Safari's motion-permission gate). */
@@ -68,8 +79,11 @@ export function useTiltGravity(engine: Matter.Engine | null): TiltGravityControl
         const g = event.accelerationIncludingGravity;
         if (!g || g.x == null || g.y == null) return;
 
-        const targetX = (g.x / EARTH_GRAVITY_MS2) * GRAVITY_SCALE;
-        const targetY = -(g.y / EARTH_GRAVITY_MS2) * GRAVITY_SCALE;
+        const gx = g.x / EARTH_GRAVITY_MS2;
+        const gy = g.y / EARTH_GRAVITY_MS2;
+        const isFlat = Math.hypot(gx, gy) < FLAT_MAGNITUDE_THRESHOLD;
+        const targetX = isFlat ? 0 : gx * GRAVITY_SCALE;
+        const targetY = isFlat ? 1 : -gy * GRAVITY_SCALE;
 
         smoothed.current.x += (targetX - smoothed.current.x) * SMOOTHING;
         smoothed.current.y += (targetY - smoothed.current.y) * SMOOTHING;
@@ -85,8 +99,9 @@ export function useTiltGravity(engine: Matter.Engine | null): TiltGravityControl
 
     Accelerometer.setUpdateInterval(UPDATE_INTERVAL_MS);
     const subscription = Accelerometer.addListener(({ x, y }) => {
-      const targetX = x * GRAVITY_SCALE;
-      const targetY = -y * GRAVITY_SCALE;
+      const isFlat = Math.hypot(x, y) < FLAT_MAGNITUDE_THRESHOLD;
+      const targetX = isFlat ? 0 : x * GRAVITY_SCALE;
+      const targetY = isFlat ? 1 : -y * GRAVITY_SCALE;
 
       smoothed.current.x += (targetX - smoothed.current.x) * SMOOTHING;
       smoothed.current.y += (targetY - smoothed.current.y) * SMOOTHING;
