@@ -12,6 +12,8 @@ import {
   computeRampPoints,
   applyWaterPhysics,
   applyRampGuide,
+  applyCupRetention,
+  CupAnchor,
   applyAirJet,
   spawnBubble,
   updateBubbles,
@@ -62,7 +64,7 @@ interface RenderBody {
 
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
 const BALL_DENSITY = 0.0005;
-const JET_STRENGTH = 0.0008;
+const JET_STRENGTH = 0.0026;
 /** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
 const JET_BASE_COLUMN_HALF_WIDTH = 50;
 /** How much the column widens per pixel risen — this is the "fan out left and right" as it climbs. */
@@ -75,10 +77,13 @@ const JET_FAN_RATE = 0.18;
  */
 const JET_VERTICAL_RANGE = 490;
 /** Tangential force around the jet's mid-height point — the "swirl/convection loop" feel. */
-const JET_SWIRL_STRENGTH = 0.0001;
+const JET_SWIRL_STRENGTH = 0.0006;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00035;
+/** Cup retention spring — see applyCupRetention in physics/engine.ts. */
+const CUP_RETENTION_STRENGTH = 0.00025;
+const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.8;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -89,6 +94,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const rafRef = useRef<number | null>(null);
   const jetXRef = useRef(width / 2);
   const jetYRef = useRef(height);
+  const cupAnchorsRef = useRef<CupAnchor[]>([]);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -106,8 +112,9 @@ export function GameCanvas({ level, onComplete }: Props) {
     jetXRef.current = rampInfo.lowPoint.x;
     jetYRef.current = rampInfo.lowPoint.y;
 
-    level.targets.forEach((target) => {
-      createCup(pw.world, width / 2 + target.dx, target.y, target.id);
+    cupAnchorsRef.current = level.targets.map((target) => {
+      const cup = createCup(pw.world, width / 2 + target.dx, target.y, target.id);
+      return { x: width / 2 + target.dx, restY: cup.restY };
     });
 
     level.pegs.forEach((peg) => {
@@ -149,6 +156,13 @@ export function GameCanvas({ level, onComplete }: Props) {
       applyRampGuide(Matter.Composite.allBodies(pw.world), jetXRef.current, rampBaseY, RAMP_GUIDE_STRENGTH);
 
       if (jetActiveRef.current) {
+        // Retention only opposes the jet, not general gravity/tilt: gravity forces are
+        // mass-scaled and these balls are light, so a retention strength that meaningfully
+        // resists the (unscaled) jet is strong enough to make even extreme tilt unable to
+        // dislodge a ball at all — defeating "tips the phone a lot" entirely. Gating retention to
+        // "jet held" keeps tilt working through plain gravity + the cup's rigid walls, same as
+        // if this feature didn't exist, while still protecting against jet disturbance.
+        applyCupRetention(Matter.Composite.allBodies(pw.world), cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
         applyAirJet(
           pw.world,
           jetXRef.current,

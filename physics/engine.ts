@@ -147,6 +147,42 @@ export function createCup(world: Matter.World, x: number, y: number, id: string)
   return { segments, restY: y + (CUP_RADIUS - BALL_RADIUS) };
 }
 
+export interface CupAnchor {
+  x: number;
+  restY: number;
+}
+
+/**
+ * Gives cups real retention: a ball within captureRadius of a cup's rest position gets pulled
+ * back toward it, proportional to displacement (a simple spring). The cup's rigid walls alone
+ * aren't enough — any nonzero jet or turbulence force will eventually walk a resting ball out
+ * given enough time, since matter-js has no built-in "stick to a spot" behavior — this models the
+ * ball actually settling into a physical dip rather than just balancing on a rail.
+ *
+ * Because it's a spring (force grows with displacement) rather than a hard clamp, it has a
+ * natural breaking point: at captureRadius the restoring force caps out at `strength *
+ * captureRadius`. A disturbance weaker than that (normal jet operation) settles into a stable,
+ * slightly-offset equilibrium — visible as a jiggle, not an escape. A disturbance whose sustained
+ * force exceeds that cap — a large device tilt adding to gravity, or the jet compounding with
+ * tilt/turbulence over a long hold — keeps accelerating the ball past the boundary and out, which
+ * is deliberately what makes "tips the phone a lot" or "presses a lot" able to still dislodge it.
+ */
+export function applyCupRetention(bodies: Matter.Body[], anchors: CupAnchor[], strength: number, captureRadius: number) {
+  for (const body of bodies) {
+    if (body.isStatic || !body.label.startsWith('ball-')) continue;
+
+    for (const anchor of anchors) {
+      const ddx = body.position.x - anchor.x;
+      const ddy = body.position.y - anchor.restY;
+      if (Math.abs(ddx) > captureRadius || Math.abs(ddy) > captureRadius) continue;
+      if (Math.hypot(ddx, ddy) > captureRadius) continue;
+
+      Matter.Body.applyForce(body, body.position, { x: -ddx * strength, y: -ddy * strength });
+      break; // cups are spaced far enough apart that a ball is never in two capture zones at once
+    }
+  }
+}
+
 /**
  * Submerged-in-liquid model: buoyancy counteracts gravity, turbulence adds life. Drag is handled
  * separately via `frictionAir` on each body (see WATER_FRICTION_AIR) rather than as a force here.
