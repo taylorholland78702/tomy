@@ -65,10 +65,10 @@ interface RenderBody {
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
 const BALL_DENSITY = 0.0005;
 const JET_STRENGTH = 0.0013;
-/** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
-const JET_BASE_COLUMN_HALF_WIDTH = 50;
+/** Column width right at the origin — wide from the start, like a real spray rather than a thin stream. */
+const JET_BASE_COLUMN_HALF_WIDTH = 90;
 /** How much the column widens per pixel risen — this is the "fan out left and right" as it climbs. */
-const JET_FAN_RATE = 0.18;
+const JET_FAN_RATE = 0.14;
 /**
  * How far above the jet's origin the lift force fades to zero — see applyAirJet in
  * physics/engine.ts. Tuned just under the ~500px distance from the ramp's low point up to the
@@ -83,7 +83,12 @@ const RAMP_OFFSET_FROM_BOTTOM = 175;
 const RAMP_GUIDE_STRENGTH = 0.00145;
 /** Cup retention spring — see applyCupRetention in physics/engine.ts. */
 const CUP_RETENTION_STRENGTH = 0.00025;
-const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.8;
+/**
+ * Kept tight — just past the cup's own rim — so retention only holds a ball that's actually
+ * settled in the cup, not one merely floating or rising past nearby, which read as the cup
+ * "attracting" or "sticking to" balls that hadn't landed in it at all.
+ */
+const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.15;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
