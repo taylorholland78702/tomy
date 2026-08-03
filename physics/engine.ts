@@ -241,6 +241,10 @@ export function applyRampGuide(bodies: Matter.Body[], rampLowX: number, rampBase
  * On top of the lift, adds a tangential (rotational) force around a fixed point mid-way up the
  * jet's range, so motion curls into a swirl/convection loop rather than traveling straight up —
  * matching how water actually circulates in a real Waterfuls toy instead of shooting like a hose.
+ * The rotation itself (relY, relX) always has the same fixed handedness, so without
+ * `swirlDirection` the water would swirl the same way — e.g. always left first — on every single
+ * press. Callers should randomize swirlDirection (+1 or -1) once per press, not per frame, so a
+ * given hold reads as one coherent loop rather than jittering between directions.
  */
 export function applyAirJet(
   world: Matter.World,
@@ -250,7 +254,8 @@ export function applyAirJet(
   baseColumnHalfWidth: number,
   verticalRange: number,
   fanRate: number,
-  swirlStrength: number
+  swirlStrength: number,
+  swirlDirection: number
 ) {
   const bodies = Matter.Composite.allBodies(world);
   const swirlCenterY = jetY - verticalRange * 0.5;
@@ -274,8 +279,8 @@ export function applyAirJet(
     const relX = body.position.x - jetX;
     const relY = body.position.y - swirlCenterY;
     const dist = Math.hypot(relX, relY) || 1;
-    const tangentialX = (-relY / dist) * swirlStrength * falloff;
-    const tangentialY = (relX / dist) * swirlStrength * falloff;
+    const tangentialX = swirlDirection * (-relY / dist) * swirlStrength * falloff;
+    const tangentialY = swirlDirection * (relX / dist) * swirlStrength * falloff;
 
     Matter.Body.applyForce(body, body.position, {
       x: -dx * 0.00002 * falloff + tangentialX,
