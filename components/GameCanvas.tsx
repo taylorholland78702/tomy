@@ -62,7 +62,7 @@ interface RenderBody {
 
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
 const BALL_DENSITY = 0.0005;
-const JET_STRENGTH = 0.0013;
+const JET_STRENGTH = 0.0008;
 /** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
 const JET_BASE_COLUMN_HALF_WIDTH = 50;
 /** How much the column widens per pixel risen — this is the "fan out left and right" as it climbs. */
