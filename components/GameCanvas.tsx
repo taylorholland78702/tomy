@@ -62,7 +62,7 @@ interface RenderBody {
 
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
 const BALL_DENSITY = 0.0005;
-const JET_STRENGTH = 0.005;
+const JET_STRENGTH = 0.0013;
 /** Column width right at the origin — narrow, like a real bubble stream before it disperses. */
 const JET_BASE_COLUMN_HALF_WIDTH = 50;
 /** How much the column widens per pixel risen — this is the "fan out left and right" as it climbs. */
@@ -75,7 +75,7 @@ const JET_FAN_RATE = 0.18;
  */
 const JET_VERTICAL_RANGE = 490;
 /** Tangential force around the jet's mid-height point — the "swirl/convection loop" feel. */
-const JET_SWIRL_STRENGTH = 0.0016;
+const JET_SWIRL_STRENGTH = 0.0001;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00035;
