@@ -11,7 +11,7 @@ export const BUOYANCY_ACCEL = 0.0006;
  * velocity damper each step. Do NOT reimplement drag as `applyForce(-k*v)`: matter-js scales
  * applyForce by deltaTime^2 (~278 at 60fps), so a velocity-proportional force resonates into an
  * exponential blowup within a handful of frames instead of damping. */
-export const WATER_FRICTION_AIR = 0.012;
+export const WATER_FRICTION_AIR = 0.05;
 
 export interface PhysicsWorld {
   engine: Matter.Engine;
