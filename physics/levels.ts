@@ -25,6 +25,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 2, name: 'The Clock' },
   { id: 3, name: 'Moving Target' },
   { id: 4, name: 'Chain Reaction' },
+  { id: 5, name: 'Undertow' },
 ];
 
 export interface LevelConfig {
@@ -68,6 +69,16 @@ export interface LevelConfig {
   comboMeter?: boolean;
   /** Enables the temporary bonus cup that cycles between random unfilled targets. */
   rainbowCup?: boolean;
+  /** Phase 5's hazard mechanic: a gentle, continuously-oscillating sideways force on every ball. */
+  sideCurrent?: boolean;
+  /**
+   * Phase 5's hazard mechanic: this many of the level's balls are "sinkers" — dull-colored balls
+   * that can physically occupy a cup but never count toward filling it (they get a 'sinker-'
+   * label instead of 'ball-', which every win-condition/settle check already filters on).
+   */
+  sinkerCount?: number;
+  /** Phase 5's hazard mechanic: the ramp gradually rises toward the fixed cups over the level. */
+  risingWater?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -268,5 +279,46 @@ export const LEVELS: LevelConfig[] = [
     chainMatchBonus: true,
     comboMeter: true,
     rainbowCup: true,
+  },
+  {
+    id: 'level-13',
+    phase: 5,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Side Current',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    sideCurrent: true,
+  },
+  {
+    id: 'level-14',
+    phase: 5,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Sinker Ball',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    sinkerCount: 1,
+  },
+  {
+    id: 'level-15',
+    phase: 5,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Full Undertow',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    // Combines both earlier Phase 5 mechanics and adds the rising floor, per the phase's own
+    // design text ("Level 3 combines both and adds...") — unlike Phases 2-4, this phase is
+    // cumulative by design.
+    sideCurrent: true,
+    sinkerCount: 1,
+    risingWater: true,
   },
 ];

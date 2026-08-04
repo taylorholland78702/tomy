@@ -208,6 +208,19 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 }
 
 /**
+ * Phase 5's "Undertow" hazard: a directional (not random, unlike applyWaterPhysics's turbulence)
+ * mass-scaled sideways force applied to every submerged body. `strength` is expected to already be
+ * signed and oscillating (the caller drives it with a sine wave over time — see GameCanvas.tsx) so
+ * this function itself stays a simple, reusable constant push rather than owning any timing logic.
+ */
+export function applyCurrent(bodies: Matter.Body[], strength: number) {
+  for (const body of bodies) {
+    if (body.isStatic || body.label === 'bubble') continue;
+    Matter.Body.applyForce(body, body.position, { x: strength * body.mass, y: 0 });
+  }
+}
+
+/**
  * Gently pulls balls sitting near the ramp horizontally toward its low point, on top of (not
  * instead of) the ramp's own incline. The ramp's true slope-driven roll is barely noticeable
  * because BUOYANCY_ACCEL is deliberately close to gravity (for the "light/floaty" feel), which

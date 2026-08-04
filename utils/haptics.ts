@@ -15,6 +15,11 @@ export function hapticLanding() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
 
+/** Distinct "uh-oh" cue when Phase 5's sinker ball lands in a cup (it never counts toward filling it). */
+export function hapticSinkerWarning() {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+}
+
 /** Multi-pulse celebration sequence on level completion. */
 export async function hapticLevelComplete() {
   const pattern = [

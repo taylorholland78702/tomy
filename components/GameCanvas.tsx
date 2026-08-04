@@ -13,7 +13,9 @@ import {
   applyWaterPhysics,
   applyRampGuide,
   applyCupRetention,
+  applyCurrent,
   CupAnchor,
+  RampInfo,
   applyAirJet,
   spawnBubble,
   updateBubbles,
@@ -24,7 +26,7 @@ import {
 } from '../physics/engine';
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
-import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
+import { hapticLanding, hapticLevelComplete, hapticSinkerWarning } from '../utils/haptics';
 import { playCountdownTick, playBonusChime } from '../utils/audio';
 
 /**
@@ -98,6 +100,8 @@ interface RenderBody {
   radius: number;
   color: string;
   isBubble: boolean;
+  /** Phase 5's sinker ball — renders as a flat muted circle instead of a gradient-filled one. */
+  isSinker?: boolean;
   /** Fraction of remaining life (1 = fresh, 0 = about to sink) — set only for levels with ballLifespanMs. */
   ringFraction?: number;
 }
@@ -152,6 +156,14 @@ const COMBO_WINDOW_MS = 3000;
 /** Phase 4 Level 12's rainbow bonus cup: how often it appears, and how long it stays up. */
 const RAINBOW_APPEAR_INTERVAL_MS = 5500;
 const RAINBOW_VISIBLE_MS = 2500;
+/** Phase 5's side current: a full oscillation cycle, ms — slower than Level 7's 5s drift so it reads as "gentle". */
+const CURRENT_PERIOD_MS = 8000;
+const CURRENT_BASE_STRENGTH = 0.0004;
+/** Phase 5's sinker ball: a muted slate gray, clearly distinct from the vibrant palette. */
+const SINKER_COLOR = '#6B7280';
+/** Phase 5 Level 15's rising floor: total px the ramp rises, and how long that takes. */
+const RISING_WATER_TOTAL_RISE = 100;
+const RISING_WATER_DURATION_MS = 40000;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -187,6 +199,12 @@ export function GameCanvas({ level, onComplete }: Props) {
   const rainbowTargetIdRef = useRef<string | null>(null);
   const rainbowNextAtRef = useRef(0);
   const rainbowHideAtRef = useRef(0);
+  /** Phase 5's rising floor: when this level instance started, and how much rise has been applied so far. */
+  const levelStartAtRef = useRef(0);
+  const rampRiseAppliedRef = useRef(0);
+  const rampInfoRef = useRef<RampInfo | null>(null);
+  /** Phase 5's sinker ball: whether one is currently settled in any cup, to edge-detect the warning haptic. */
+  const sinkerInCupRef = useRef(false);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -194,17 +212,22 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [twinOffsetX, setTwinOffsetX] = useState<number | null>(null);
   const [comboCount, setComboCount] = useState(0);
   const [rainbowTargetId, setRainbowTargetId] = useState<string | null>(null);
+  const [rampRise, setRampRise] = useState(0);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
   const rampBaseY = height - RAMP_OFFSET_FROM_BOTTOM;
-  const ramp = computeRampPoints(width, rampBaseY);
+  // Phase 5 Level 15's rising floor moves the ramp upward over time (see rampRiseAppliedRef in the
+  // setup effect below) — recomputed from rampRise state each render so the rendered <Line>s track
+  // the physical ramp bodies, which stay 0 (no visible change) for every level without risingWater.
+  const ramp = computeRampPoints(width, rampBaseY - rampRise);
 
   useEffect(() => {
     const pw = createPhysicsWorld(width, height);
     physicsRef.current = pw;
     setEngineVersion((v) => v + 1);
     const rampInfo = createVRamp(pw.world, width, rampBaseY);
+    rampInfoRef.current = rampInfo;
     jetXRef.current = rampInfo.lowPoint.x;
     jetYRef.current = rampInfo.lowPoint.y;
 
@@ -221,12 +244,19 @@ export function GameCanvas({ level, onComplete }: Props) {
     // real toy, instead of a single spread-out row.
     const cols = Math.min(6, level.ballCount);
     const spacing = BALL_RADIUS * 2 + 4;
+    const sinkerCount = level.sinkerCount ?? 0;
     const balls = level.ballColors.slice(0, level.ballCount).map((color, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const rowCount = Math.min(cols, level.ballCount - row * cols);
       const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
-      return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, ballBodyOptions(color));
+      // Phase 5's sinker ball: the last sinkerCount balls get a 'sinker-' label instead of
+      // 'ball-' — physically identical (same ballBodyOptions), but every settle/win-condition
+      // check filters on the 'ball-' prefix, so a sinker can occupy a cup without ever counting
+      // toward filling it.
+      const isSinker = i >= level.ballCount - sinkerCount;
+      const options = isSinker ? { ...ballBodyOptions(SINKER_COLOR), label: `sinker-${SINKER_COLOR}` } : ballBodyOptions(color);
+      return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, options);
     });
     Matter.World.add(pw.world, balls);
 
@@ -247,10 +277,14 @@ export function GameCanvas({ level, onComplete }: Props) {
     rainbowTargetIdRef.current = null;
     rainbowNextAtRef.current = Date.now() + RAINBOW_APPEAR_INTERVAL_MS;
     rainbowHideAtRef.current = 0;
+    levelStartAtRef.current = Date.now();
+    rampRiseAppliedRef.current = 0;
+    sinkerInCupRef.current = false;
     setButtonOffsetX(0);
     setTwinOffsetX(null);
     setComboCount(0);
     setRainbowTargetId(null);
+    setRampRise(0);
 
     let lastTime = Date.now();
     const loop = () => {
@@ -270,13 +304,39 @@ export function GameCanvas({ level, onComplete }: Props) {
       );
       if (level.buttonMotion) jetXRef.current = width / 2 + buttonOffsetRef.current;
 
+      // Phase 5 Level 15's rising floor: gradually translates the ramp's static bodies upward
+      // over RISING_WATER_DURATION_MS, dragging the jet origin with it. Cup positions never move
+      // (they're fixed in level.targets), so a rising ramp is exactly "shrinks the vertical
+      // distance balls need to travel" — no cup/geometry changes needed anywhere else.
+      if (level.risingWater && rampInfoRef.current) {
+        const elapsed = now - levelStartAtRef.current;
+        const progress = Math.min(1, Math.max(0, elapsed / RISING_WATER_DURATION_MS));
+        const targetRise = progress * RISING_WATER_TOTAL_RISE;
+        const riseDelta = targetRise - rampRiseAppliedRef.current;
+        if (riseDelta !== 0) {
+          Matter.Body.translate(rampInfoRef.current.leftSeg, { x: 0, y: -riseDelta });
+          Matter.Body.translate(rampInfoRef.current.rightSeg, { x: 0, y: -riseDelta });
+          jetYRef.current -= riseDelta;
+          rampRiseAppliedRef.current = targetRise;
+        }
+      }
+      const currentRampBaseY = rampBaseY - rampRiseAppliedRef.current;
+
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
+      if (level.sideCurrent) {
+        // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
+        // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
+        // against one wall over time.
+        const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / CURRENT_PERIOD_MS) * 2 * Math.PI);
+        applyCurrent(Matter.Composite.allBodies(pw.world), currentStrength);
+      }
       // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
       // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
       // origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
-      // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving)
-      // geometry, not wherever the button currently is.
-      applyRampGuide(Matter.Composite.allBodies(pw.world), width / 2, rampBaseY, RAMP_GUIDE_STRENGTH);
+      // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving,
+      // except for Level 15's rising floor, which currentRampBaseY tracks) geometry, not wherever
+      // the button currently is.
+      applyRampGuide(Matter.Composite.allBodies(pw.world), width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
 
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
       if (anyJetActive) {
@@ -333,7 +393,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);
 
       const rampLowX = width / 2;
-      const rampLowY = rampBaseY;
+      const rampLowY = currentRampBaseY;
       const spawnBonus = (x: number, y: number) => triggerBonus(pw, level, x, y, rampLowX, rampLowY);
       checkChainMatches(level, settledBalls, matchedRowsRef, width, spawnBonus);
       updateComboMeter(level, newlyFilled, comboCountRef, comboLastLandingAtRef, now);
@@ -348,15 +408,26 @@ export function GameCanvas({ level, onComplete }: Props) {
         spawnBonus
       );
 
+      if (level.sinkerCount) {
+        const settledSinkers = computeSettledSinkers(pw, level, width);
+        const anySinkerSettled = settledSinkers.size > 0;
+        if (anySinkerSettled && !sinkerInCupRef.current) {
+          hapticSinkerWarning();
+        }
+        sinkerInCupRef.current = anySinkerSettled;
+      }
+
       setButtonOffsetX(buttonOffsetRef.current);
       setTwinOffsetX(twinVisible ? secondaryOffsetRef.current : null);
       setComboCount(comboCountRef.current);
       setRainbowTargetId(rainbowVisibleId);
+      setRampRise(rampRiseAppliedRef.current);
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
         bodies.map((b) => {
           const isBall = b.label.startsWith('ball-');
+          const isSinker = b.label.startsWith('sinker-');
           const ringFraction =
             isBall && level.ballLifespanMs
               ? Math.max(0, 1 - (ballAgeRef.current.get(b.id) ?? 0) / level.ballLifespanMs)
@@ -366,8 +437,9 @@ export function GameCanvas({ level, onComplete }: Props) {
             x: b.position.x,
             y: b.position.y,
             radius: (b as any).circleRadius ?? 10,
-            color: isBall ? b.label.replace('ball-', '') : '#EAFBFF',
+            color: isBall ? b.label.replace('ball-', '') : isSinker ? SINKER_COLOR : '#EAFBFF',
             isBubble: b.label === 'bubble',
+            isSinker,
             ringFraction,
           };
         })
@@ -463,7 +535,7 @@ export function GameCanvas({ level, onComplete }: Props) {
               cx={b.x}
               cy={b.y}
               r={b.radius}
-              fill={b.isBubble ? 'rgba(255,255,255,0.55)' : `url(#${ballGradientId(b.color)})`}
+              fill={b.isBubble ? 'rgba(255,255,255,0.55)' : b.isSinker ? SINKER_COLOR : `url(#${ballGradientId(b.color)})`}
               opacity={b.isBubble ? 0.6 : 1}
             />
             {b.ringFraction !== undefined &&
@@ -622,6 +694,33 @@ function computeSettledBalls(pw: PhysicsWorld, level: LevelConfig, width: number
       return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
     });
     if (ball) result.set(target.id, ball);
+  }
+
+  return result;
+}
+
+/**
+ * Phase 5's sinker ball: same settle math as computeSettledBalls, filtered to the 'sinker-'
+ * prefix instead of 'ball-'. Kept as its own small function rather than generalizing
+ * computeSettledBalls with a filter parameter, to avoid touching the win-condition-critical
+ * function that every other mechanic already depends on. Used only for the warning haptic —
+ * never for win-condition purposes, since a sinker should never count as filling a cup.
+ */
+function computeSettledSinkers(pw: PhysicsWorld, level: LevelConfig, width: number): Map<string, Matter.Body> {
+  const sinkers = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('sinker-'));
+  const result = new Map<string, Matter.Body>();
+
+  for (const target of level.targets as TargetConfig[]) {
+    const targetX = width / 2 + target.dx;
+    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
+
+    const sinker = sinkers.find((b) => {
+      const deltaX = b.position.x - targetX;
+      const deltaY = b.position.y - restY;
+      const settled = Math.abs(b.velocity.x) < 1.2 && Math.abs(b.velocity.y) < 1.2;
+      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
+    });
+    if (sinker) result.set(target.id, sinker);
   }
 
   return result;
