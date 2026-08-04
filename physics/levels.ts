@@ -300,7 +300,9 @@ export const LEVELS: LevelConfig[] = [
     name: 'Sinker Ball',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
     pegs: PEGS_ROW_1,
-    ballCount: 6,
+    // 6 cups + 1 sinker (which never counts toward filling a cup) needs 7 balls total, not 6 —
+    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
+    ballCount: 7,
     ballColors: BALL_PALETTE,
     sinkerCount: 1,
   },
@@ -312,8 +314,11 @@ export const LEVELS: LevelConfig[] = [
     name: 'Full Undertow',
     targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    ballCount: 9,
-    ballColors: BALL_PALETTE,
+    // 9 cups + 1 sinker (which never counts toward filling a cup) needs 10 balls total, not 9 —
+    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
+    // BALL_PALETTE only has 9 entries, so append one more repeated color for the 10th ball.
+    ballCount: 10,
+    ballColors: [...BALL_PALETTE, BALL_PALETTE[0]],
     // Combines both earlier Phase 5 mechanics and adds the rising floor, per the phase's own
     // design text ("Level 3 combines both and adds...") — unlike Phases 2-4, this phase is
     // cumulative by design.
