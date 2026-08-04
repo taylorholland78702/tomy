@@ -1,6 +1,13 @@
 import Matter from 'matter-js';
 
-export const TURBULENCE_STRENGTH = 0.00004;
+/**
+ * Ambient random jitter applied to every submerged body every frame. Needs to be large enough to
+ * visibly break up synchronized motion under strong tilt — e.g. a cluster of balls slammed to the
+ * top by a full downward tilt, then falling back as gravity flips: without enough turbulence,
+ * near-identical starting positions/velocities under near-identical (mass-scaled) gravity forces
+ * make them fall as a uniform block in a straight line instead of scattering naturally.
+ */
+export const TURBULENCE_STRENGTH = 0.002;
 /**
  * Kept below matter-js's built-in gravity pull (gravity.y * gravity.scale = 1 * 0.001 = 0.001 per
  * unit mass) so balls are net negatively buoyant at rest: they sink and settle on the bottom
