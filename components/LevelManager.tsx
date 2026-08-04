@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { GameCanvas } from './GameCanvas';
-import { LEVELS } from '../physics/levels';
+import { LEVELS, PHASES } from '../physics/levels';
 
-/** Orchestrates level progression: Phase 1 baskets -> Phase 2 rings -> future phases. */
+function phaseName(phaseId: number): string {
+  return PHASES.find((p) => p.id === phaseId)?.name ?? '';
+}
+
+/** Orchestrates level progression through the flattened LEVELS list, grouped by Phase. */
 export function LevelManager() {
   const [levelIndex, setLevelIndex] = useState(0);
+  const [resetKey, setResetKey] = useState(0);
   const [banner, setBanner] = useState<string | null>(null);
   const level = LEVELS[levelIndex];
   const isLastLevel = levelIndex + 1 >= LEVELS.length;
@@ -22,14 +27,22 @@ export function LevelManager() {
     }
   };
 
+  const handleRestart = () => setResetKey((k) => k + 1);
+
   return (
     <View style={styles.root}>
-      <GameCanvas key={level.id} level={level} onComplete={handleComplete} />
+      <GameCanvas key={`${level.id}-${resetKey}`} level={level} onComplete={handleComplete} />
       <View style={styles.hud}>
+        <Text style={styles.hudPhaseText}>
+          Phase {level.phase} · {phaseName(level.phase)}
+        </Text>
         <Text style={styles.hudText}>
-          Phase {level.phase} · {level.name}
+          Level {level.levelInPhase} · {level.name}
         </Text>
       </View>
+      <Pressable style={styles.restartButton} onPress={handleRestart}>
+        <Text style={styles.restartButtonText}>Restart</Text>
+      </Pressable>
       {banner && (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{banner}</Text>
@@ -43,8 +56,17 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   hud: {
     position: 'absolute',
-    top: 20,
-    alignSelf: 'center',
+    top: 18,
+    left: 0,
+    right: 90,
+    alignItems: 'center',
+  },
+  hudPhaseText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.6,
+    letterSpacing: 0.5,
   },
   hudText: {
     color: 'white',
@@ -52,6 +74,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.85,
     letterSpacing: 0.5,
+  },
+  restartButton: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  restartButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.85,
   },
   banner: {
     position: 'absolute',

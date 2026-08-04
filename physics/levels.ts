@@ -14,15 +14,35 @@ export interface PegConfig {
   y: number;
 }
 
+export interface PhaseConfig {
+  id: number;
+  name: string;
+}
+
+/** Each Phase owns one new mechanic, introduced/tightened/mastered across its 3 Levels. */
+export const PHASES: PhaseConfig[] = [
+  { id: 1, name: 'Foundations' },
+  { id: 2, name: 'The Clock' },
+];
+
 export interface LevelConfig {
   id: string;
+  /** Which Phase (mechanic umbrella) this level belongs to — see PHASES. */
   phase: number;
+  /** Position within its Phase (1-3): gentle intro -> tightened -> mastery test. */
+  levelInPhase: number;
   type: LevelType;
   name: string;
   targets: TargetConfig[];
   pegs: PegConfig[];
   ballCount: number;
   ballColors: string[];
+  /**
+   * Phase 2's "ball lifecycle" mechanic: when set, a floating ball (not currently resting in a
+   * cup) ages out and sinks after this many ms. Undefined = balls live forever, i.e. every
+   * Phase 1 level, unchanged from the original design.
+   */
+  ballLifespanMs?: number;
 }
 
 const BALL_PALETTE = [
@@ -68,6 +88,7 @@ export const LEVELS: LevelConfig[] = [
   {
     id: 'level-1',
     phase: 1,
+    levelInPhase: 1,
     type: 'baskets',
     name: 'Three Cups',
     targets: TOP_ROW,
@@ -77,7 +98,8 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-2',
-    phase: 2,
+    phase: 1,
+    levelInPhase: 2,
     type: 'baskets',
     name: 'Six Cups',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
@@ -87,12 +109,25 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-3',
-    phase: 3,
+    phase: 1,
+    levelInPhase: 3,
     type: 'baskets',
     name: 'Nine Cups',
     targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
     ballColors: BALL_PALETTE,
+  },
+  {
+    id: 'level-4',
+    phase: 2,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Countdown Ring',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    ballLifespanMs: 7000,
   },
 ];

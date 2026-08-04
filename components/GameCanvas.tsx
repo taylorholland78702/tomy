@@ -46,6 +46,22 @@ function shadeColor(hex: string, percent: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }
 
+/**
+ * Countdown-ring color: calm through most of a ball's life, shifting to amber/red only in the
+ * last ~20% of remaining time — per the "generous, just enough to notice" brief for Phase 2
+ * Level 1 (urgency escalates further in later Phase 2 levels via a tick sound, not color alone).
+ */
+function ringColor(fraction: number): string {
+  const calm = { r: 190, g: 235, b: 255 };
+  const danger = { r: 255, g: 92, b: 59 };
+  if (fraction > 0.2) return `rgba(${calm.r},${calm.g},${calm.b},0.85)`;
+  const t = 1 - fraction / 0.2;
+  const r = Math.round(calm.r + (danger.r - calm.r) * t);
+  const g = Math.round(calm.g + (danger.g - calm.g) * t);
+  const b = Math.round(calm.b + (danger.b - calm.b) * t);
+  return `rgba(${r},${g},${b},0.9)`;
+}
+
 const ballGradientId = (color: string) => `ball-grad-${color.replace('#', '')}`;
 
 interface Props {
@@ -60,6 +76,8 @@ interface RenderBody {
   radius: number;
   color: string;
   isBubble: boolean;
+  /** Fraction of remaining life (1 = fresh, 0 = about to sink) — set only for levels with ballLifespanMs. */
+  ringFraction?: number;
 }
 
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
@@ -100,6 +118,8 @@ export function GameCanvas({ level, onComplete }: Props) {
   const jetXRef = useRef(width / 2);
   const jetYRef = useRef(height);
   const cupAnchorsRef = useRef<CupAnchor[]>([]);
+  /** Phase 2's ball-lifecycle mechanic: body id -> accumulated ms spent "unsafe" (not settled in a cup). */
+  const ballAgeRef = useRef<Map<number, number>>(new Map());
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -153,6 +173,7 @@ export function GameCanvas({ level, onComplete }: Props) {
 
     filledRef.current = new Set();
     wonRef.current = false;
+    ballAgeRef.current = new Map();
 
     let lastTime = Date.now();
     const loop = () => {
@@ -186,22 +207,34 @@ export function GameCanvas({ level, onComplete }: Props) {
       updateBubbles(pw.world, 1600);
 
       Matter.Engine.update(pw.engine, delta);
-      const filledChanged = checkTargets(pw, level, width, filledRef.current, wonRef, () => {
+
+      const settledBalls = computeSettledBalls(pw, level, width);
+      const filledChanged = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
         setTimeout(onComplete, 1200);
       });
       if (filledChanged) setFilledIds(Array.from(filledRef.current));
 
+      ageBalls(pw, level, settledBalls, ballAgeRef.current, delta);
+
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
-        bodies.map((b) => ({
-          id: b.id,
-          x: b.position.x,
-          y: b.position.y,
-          radius: (b as any).circleRadius ?? 10,
-          color: b.label.startsWith('ball-') ? b.label.replace('ball-', '') : '#EAFBFF',
-          isBubble: b.label === 'bubble',
-        }))
+        bodies.map((b) => {
+          const isBall = b.label.startsWith('ball-');
+          const ringFraction =
+            isBall && level.ballLifespanMs
+              ? Math.max(0, 1 - (ballAgeRef.current.get(b.id) ?? 0) / level.ballLifespanMs)
+              : undefined;
+          return {
+            id: b.id,
+            x: b.position.x,
+            y: b.position.y,
+            radius: (b as any).circleRadius ?? 10,
+            color: isBall ? b.label.replace('ball-', '') : '#EAFBFF',
+            isBubble: b.label === 'bubble',
+            ringFraction,
+          };
+        })
       );
 
       rafRef.current = requestAnimationFrame(loop);
@@ -264,14 +297,32 @@ export function GameCanvas({ level, onComplete }: Props) {
           />
         ))}
         {renderBodies.map((b) => (
-          <Circle
-            key={b.id}
-            cx={b.x}
-            cy={b.y}
-            r={b.radius}
-            fill={b.isBubble ? 'rgba(255,255,255,0.55)' : `url(#${ballGradientId(b.color)})`}
-            opacity={b.isBubble ? 0.6 : 1}
-          />
+          <React.Fragment key={b.id}>
+            <Circle
+              cx={b.x}
+              cy={b.y}
+              r={b.radius}
+              fill={b.isBubble ? 'rgba(255,255,255,0.55)' : `url(#${ballGradientId(b.color)})`}
+              opacity={b.isBubble ? 0.6 : 1}
+            />
+            {b.ringFraction !== undefined &&
+              (() => {
+                const ringRadius = b.radius + 4;
+                const circumference = 2 * Math.PI * ringRadius;
+                return (
+                  <Circle
+                    cx={b.x}
+                    cy={b.y}
+                    r={ringRadius}
+                    fill="none"
+                    stroke={ringColor(b.ringFraction)}
+                    strokeWidth={2}
+                    strokeDasharray={`${circumference * b.ringFraction} ${circumference}`}
+                    strokeLinecap="round"
+                  />
+                );
+              })()}
+          </React.Fragment>
         ))}
       </Svg>
       <AirJetButton onHoldChange={handleHoldChange} />
@@ -308,34 +359,83 @@ const styles = StyleSheet.create({
 });
 
 /**
- * A target counts as "filled" only while a ball is currently resting in its bowl — near the
- * bottom of the semicircular arc (see createCup's restY), moving slowly. Re-evaluated every
- * frame in both directions: a cup un-fills the moment its ball is knocked out or lifted back
- * out by the jet, not just once when a ball first lands.
+ * Finds the single ball body currently "settled" in each target — resting near the bottom of the
+ * semicircular arc (see createCup's restY), moving slowly. Shared by checkTargets (win condition)
+ * and the Phase 2 ball-lifecycle timer (a settled ball is "safe" and stops aging), so both agree
+ * on exactly which ball counts as landed rather than duplicating the settle math.
  */
-function checkTargets(
+function computeSettledBalls(pw: PhysicsWorld, level: LevelConfig, width: number): Map<string, Matter.Body> {
+  const balls = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
+  const result = new Map<string, Matter.Body>();
+
+  for (const target of level.targets as TargetConfig[]) {
+    const targetX = width / 2 + target.dx;
+    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
+
+    const ball = balls.find((b) => {
+      const deltaX = b.position.x - targetX;
+      const deltaY = b.position.y - restY;
+      const settled = Math.abs(b.velocity.x) < 1.2 && Math.abs(b.velocity.y) < 1.2;
+      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
+    });
+    if (ball) result.set(target.id, ball);
+  }
+
+  return result;
+}
+
+/**
+ * Phase 2's ball-lifecycle mechanic: every floating (non-settled) ball accumulates age each
+ * frame; once it reaches ballLifespanMs it sinks (removed from the world, small bubble-burst
+ * "splash"). A settled ball's timer pauses, not resets, at its current value, so a ball nudged
+ * out of a cup later resumes from where it left off rather than getting a fresh full life.
+ * No-op when the level has no ballLifespanMs, so Phase 1 levels are unaffected.
+ */
+function ageBalls(
   pw: PhysicsWorld,
   level: LevelConfig,
-  width: number,
+  settledBalls: Map<string, Matter.Body>,
+  ballAge: Map<number, number>,
+  delta: number
+) {
+  if (!level.ballLifespanMs) return;
+
+  const settledBallIds = new Set(Array.from(settledBalls.values()).map((b) => b.id));
+  const ballBodies = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
+  for (const ball of ballBodies) {
+    if (settledBallIds.has(ball.id)) continue;
+
+    const age = (ballAge.get(ball.id) ?? 0) + delta;
+    if (age >= level.ballLifespanMs) {
+      const { x, y } = ball.position;
+      Matter.World.remove(pw.world, ball);
+      ballAge.delete(ball.id);
+      for (let i = 0; i < 5; i++) spawnBubble(pw.world, x, y);
+    } else {
+      ballAge.set(ball.id, age);
+    }
+  }
+}
+
+/**
+ * A target counts as "filled" only while a ball is currently resting in its bowl. Re-evaluated
+ * every frame in both directions: a cup un-fills the moment its ball is knocked out or lifted
+ * back out by the jet (or, in Phase 2, sinks away after its countdown expires), not just once
+ * when a ball first lands.
+ */
+function checkTargets(
+  settledBalls: Map<string, Matter.Body>,
+  level: LevelConfig,
   filled: Set<string>,
   wonRef: React.MutableRefObject<boolean>,
   onWin: () => void
 ): boolean {
   if (wonRef.current) return false;
 
-  const balls = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
   let changed = false;
 
   for (const target of level.targets as TargetConfig[]) {
-    const targetX = width / 2 + target.dx;
-    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
-
-    const occupied = balls.some((ball) => {
-      const deltaX = ball.position.x - targetX;
-      const deltaY = ball.position.y - restY;
-      const settled = Math.abs(ball.velocity.x) < 1.2 && Math.abs(ball.velocity.y) < 1.2;
-      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
-    });
+    const occupied = settledBalls.has(target.id);
 
     if (occupied && !filled.has(target.id)) {
       filled.add(target.id);
