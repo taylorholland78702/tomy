@@ -221,6 +221,31 @@ export function applyCurrent(bodies: Matter.Body[], strength: number) {
 }
 
 /**
+ * Phase 6's magnet-ball power-up: pulls every other ball within `radius` of `magnetBody` toward
+ * it, falling off linearly with distance (so balls right next to the magnet feel a strong tug,
+ * balls near the edge of its range barely anything) — a small self-contained addition, not a
+ * change to any existing force function. The caller only invokes this while the magnet ball
+ * itself is still in flight (see GameCanvas.tsx), so the pull naturally stops once it settles.
+ */
+export function applyMagnetAttraction(bodies: Matter.Body[], magnetBody: Matter.Body, radius: number, strength: number) {
+  for (const body of bodies) {
+    if (body.isStatic || body.label === 'bubble' || body === magnetBody) continue;
+
+    const dx = magnetBody.position.x - body.position.x;
+    const dy = magnetBody.position.y - body.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance >= radius || distance === 0) continue;
+
+    const falloff = 1 - distance / radius;
+    const forceMagnitude = strength * falloff * body.mass;
+    Matter.Body.applyForce(body, body.position, {
+      x: (dx / distance) * forceMagnitude,
+      y: (dy / distance) * forceMagnitude,
+    });
+  }
+}
+
+/**
  * Gently pulls balls sitting near the ramp horizontally toward its low point, on top of (not
  * instead of) the ramp's own incline. The ramp's true slope-driven roll is barely noticeable
  * because BUOYANCY_ACCEL is deliberately close to gravity (for the "light/floaty" feel), which

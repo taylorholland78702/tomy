@@ -12,6 +12,8 @@ interface Props {
    * reads as "act now, this won't stay" next to the permanent primary button.
    */
   variant?: 'primary' | 'ghost';
+  /** Phase 6 Level 18: true once a held press has passed the charge threshold — a warm gold ring signals "ready to release for a power burst". */
+  charging?: boolean;
 }
 
 const BUTTON_SIZE = 57;
@@ -28,7 +30,7 @@ const SOCKET_BOTTOM_OFFSET = 50;
  * button: a glossy raised dome sitting in a recessed dark socket, pressing down and flattening
  * its shadow when held. Heavy tap on press, soft ticks while held.
  */
-export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary' }: Props) {
+export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary', charging = false }: Props) {
   const pressAnim = useRef(new Animated.Value(0)).current; // 0 = raised, 1 = pressed in
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -56,6 +58,7 @@ export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary' }:
       style={[
         styles.socket,
         variant === 'ghost' && styles.socketGhost,
+        charging && styles.socketCharging,
         { transform: [{ translateX: offsetX }] },
       ]}
     >
@@ -87,6 +90,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255,210,59,0.75)',
     boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4), 0px 0px 12px rgba(255,210,59,0.5)',
+  },
+  socketCharging: {
+    borderWidth: 3,
+    borderColor: 'rgba(255,180,40,0.9)',
+    boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4), 0px 0px 18px rgba(255,180,40,0.75)',
   },
   buttonWrap: {
     width: BUTTON_SIZE,

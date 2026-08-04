@@ -26,6 +26,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 3, name: 'Moving Target' },
   { id: 4, name: 'Chain Reaction' },
   { id: 5, name: 'Undertow' },
+  { id: 6, name: 'Bonus Tokens' },
 ];
 
 export interface LevelConfig {
@@ -79,6 +80,19 @@ export interface LevelConfig {
   sinkerCount?: number;
   /** Phase 5's hazard mechanic: the ramp gradually rises toward the fixed cups over the level. */
   risingWater?: boolean;
+  /**
+   * Phase 6's power-up mechanic: this many balls are "golden" — same as a normal ball (counts
+   * toward filling its own cup), but landing one auto-fills a random other empty cup once per
+   * level instance.
+   */
+  goldenCount?: number;
+  /**
+   * Phase 6's power-up mechanic: this many balls are "magnets" — same as a normal ball, but while
+   * still floating (not yet settled) it pulls other floating balls toward it.
+   */
+  magnetCount?: number;
+  /** Phase 6's power-up mechanic: holding the button past a threshold before releasing adds a one-time power burst on release. */
+  chargeableJet?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -325,5 +339,41 @@ export const LEVELS: LevelConfig[] = [
     sideCurrent: true,
     sinkerCount: 1,
     risingWater: true,
+  },
+  {
+    id: 'level-16',
+    phase: 6,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Golden Ball',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    goldenCount: 1,
+  },
+  {
+    id: 'level-17',
+    phase: 6,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Magnet Ball',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    magnetCount: 1,
+  },
+  {
+    id: 'level-18',
+    phase: 6,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Charged Bubble',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    chargeableJet: true,
   },
 ];

@@ -14,6 +14,7 @@ import {
   applyRampGuide,
   applyCupRetention,
   applyCurrent,
+  applyMagnetAttraction,
   CupAnchor,
   RampInfo,
   applyAirJet,
@@ -26,7 +27,7 @@ import {
 } from '../physics/engine';
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
-import { hapticLanding, hapticLevelComplete, hapticSinkerWarning } from '../utils/haptics';
+import { hapticLanding, hapticLevelComplete, hapticSinkerWarning, hapticJetPress } from '../utils/haptics';
 import { playCountdownTick, playBonusChime } from '../utils/audio';
 
 /**
@@ -164,6 +165,14 @@ const SINKER_COLOR = '#6B7280';
 /** Phase 5 Level 15's rising floor: total px the ramp rises, and how long that takes. */
 const RISING_WATER_TOTAL_RISE = 100;
 const RISING_WATER_DURATION_MS = 40000;
+/** Phase 6's golden/magnet balls: fixed reserved colors, distinct from BALL_PALETTE and SINKER_COLOR. */
+const GOLD_COLOR = '#FFD700';
+const MAGNET_COLOR = '#B24BF3';
+const MAGNET_RADIUS = 140;
+const MAGNET_STRENGTH = 0.00035;
+/** Phase 6 Level 18's chargeable jet: hold past this long before releasing to add a power burst. */
+const CHARGE_THRESHOLD_MS = 700;
+const CHARGE_BURST_STRENGTH = JET_STRENGTH * 2.5;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -205,6 +214,12 @@ export function GameCanvas({ level, onComplete }: Props) {
   const rampInfoRef = useRef<RampInfo | null>(null);
   /** Phase 5's sinker ball: whether one is currently settled in any cup, to edge-detect the warning haptic. */
   const sinkerInCupRef = useRef(false);
+  /** Phase 6's golden ball: whether its one-time auto-fill bonus has already fired this level instance. */
+  const goldenTriggeredRef = useRef(false);
+  /** Phase 6 Level 18's chargeable jet: timestamp the current press started, for measuring hold duration on release. */
+  const jetHoldStartAtRef = useRef(0);
+  /** Phase 6's magnet ball: whether it was settled as of the previous frame's settle check. */
+  const magnetSettledRef = useRef(false);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -213,6 +228,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [comboCount, setComboCount] = useState(0);
   const [rainbowTargetId, setRainbowTargetId] = useState<string | null>(null);
   const [rampRise, setRampRise] = useState(0);
+  const [charging, setCharging] = useState(false);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -245,17 +261,29 @@ export function GameCanvas({ level, onComplete }: Props) {
     const cols = Math.min(6, level.ballCount);
     const spacing = BALL_RADIUS * 2 + 4;
     const sinkerCount = level.sinkerCount ?? 0;
+    const goldenCount = level.goldenCount ?? 0;
+    const magnetCount = level.magnetCount ?? 0;
     const balls = level.ballColors.slice(0, level.ballCount).map((color, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const rowCount = Math.min(cols, level.ballCount - row * cols);
       const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
-      // Phase 5's sinker ball: the last sinkerCount balls get a 'sinker-' label instead of
-      // 'ball-' — physically identical (same ballBodyOptions), but every settle/win-condition
-      // check filters on the 'ball-' prefix, so a sinker can occupy a cup without ever counting
-      // toward filling it.
+      // Reserve trailing slots for each special ball type, sinker first — Phase 5/6 levels never
+      // combine more than one of these, but reserving in a fixed order keeps this correct even if
+      // a future level did.
       const isSinker = i >= level.ballCount - sinkerCount;
-      const options = isSinker ? { ...ballBodyOptions(SINKER_COLOR), label: `sinker-${SINKER_COLOR}` } : ballBodyOptions(color);
+      const isGolden = !isSinker && i >= level.ballCount - sinkerCount - goldenCount;
+      const isMagnet = !isSinker && !isGolden && i >= level.ballCount - sinkerCount - goldenCount - magnetCount;
+      // Phase 5's sinker ball: a 'sinker-' label instead of 'ball-' — physically identical (same
+      // ballBodyOptions), but every settle/win-condition check filters on the 'ball-' prefix, so a
+      // sinker can occupy a cup without ever counting toward filling it. Golden/magnet balls stay
+      // 'ball-' labeled (they DO count toward filling their cup) and are only distinguished by a
+      // reserved color.
+      let options: Matter.IBodyDefinition;
+      if (isSinker) options = { ...ballBodyOptions(SINKER_COLOR), label: `sinker-${SINKER_COLOR}` };
+      else if (isGolden) options = ballBodyOptions(GOLD_COLOR);
+      else if (isMagnet) options = ballBodyOptions(MAGNET_COLOR);
+      else options = ballBodyOptions(color);
       return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, options);
     });
     Matter.World.add(pw.world, balls);
@@ -280,11 +308,15 @@ export function GameCanvas({ level, onComplete }: Props) {
     levelStartAtRef.current = Date.now();
     rampRiseAppliedRef.current = 0;
     sinkerInCupRef.current = false;
+    goldenTriggeredRef.current = false;
+    jetHoldStartAtRef.current = 0;
+    magnetSettledRef.current = false;
     setButtonOffsetX(0);
     setTwinOffsetX(null);
     setComboCount(0);
     setRainbowTargetId(null);
     setRampRise(0);
+    setCharging(false);
 
     let lastTime = Date.now();
     const loop = () => {
@@ -323,6 +355,16 @@ export function GameCanvas({ level, onComplete }: Props) {
       const currentRampBaseY = rampBaseY - rampRiseAppliedRef.current;
 
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
+      if (level.magnetCount && !magnetSettledRef.current) {
+        // Phase 6's magnet ball: pulls nearby floating balls toward it while it's still in
+        // flight. Gated on last frame's settle status (magnetSettledRef, updated after this
+        // frame's settle check below) rather than re-deriving it here, since settledBalls is only
+        // known post-update — a one-frame lag that's imperceptible at 60fps.
+        const magnetBall = Matter.Composite.allBodies(pw.world).find((b) => b.label === `ball-${MAGNET_COLOR}`);
+        if (magnetBall) {
+          applyMagnetAttraction(Matter.Composite.allBodies(pw.world), magnetBall, MAGNET_RADIUS, MAGNET_STRENGTH);
+        }
+      }
       if (level.sideCurrent) {
         // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
         // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
@@ -417,6 +459,15 @@ export function GameCanvas({ level, onComplete }: Props) {
         sinkerInCupRef.current = anySinkerSettled;
       }
 
+      if (level.magnetCount) {
+        magnetSettledRef.current = Array.from(settledBalls.values()).some((b) => b.label === `ball-${MAGNET_COLOR}`);
+      }
+
+      triggerGoldenBonus(pw, level, settledBalls, filledRef.current, goldenTriggeredRef, width);
+
+      const isCharging = !!level.chargeableJet && jetActiveRef.current && now - jetHoldStartAtRef.current >= CHARGE_THRESHOLD_MS;
+      setCharging(isCharging);
+
       setButtonOffsetX(buttonOffsetRef.current);
       setTwinOffsetX(twinVisible ? secondaryOffsetRef.current : null);
       setComboCount(comboCountRef.current);
@@ -458,6 +509,35 @@ export function GameCanvas({ level, onComplete }: Props) {
 
   const handleHoldChange = useCallback(
     (active: boolean) => {
+      if (level.chargeableJet) {
+        if (active) {
+          jetHoldStartAtRef.current = Date.now();
+        } else if (jetActiveRef.current && Date.now() - jetHoldStartAtRef.current >= CHARGE_THRESHOLD_MS) {
+          // Phase 6 Level 18: a hold that reached the charge threshold gets one extra strong
+          // burst on release, on top of whatever the continuous hold already applied every frame
+          // — reusing applyAirJet (the same function the continuous hold calls) at a higher
+          // strength, just once, rather than a new physics primitive. matter-js accumulates any
+          // force applied before the next Engine.update regardless of caller, so this integrates
+          // correctly even though it's fired from a UI event outside the animation loop.
+          const pw = physicsRef.current;
+          if (pw) {
+            applyAirJet(
+              pw.world,
+              jetXRef.current,
+              jetYRef.current,
+              CHARGE_BURST_STRENGTH,
+              JET_BASE_COLUMN_HALF_WIDTH,
+              JET_VERTICAL_RANGE,
+              JET_FAN_RATE,
+              JET_SPREAD_STRENGTH
+            );
+            spawnBubble(pw.world, jetXRef.current, jetYRef.current);
+            spawnBubble(pw.world, jetXRef.current, jetYRef.current);
+          }
+          hapticJetPress();
+        }
+      }
+
       // Phase 3 Levels 8-9: jump to a new spot the instant the button is released, so every
       // press requires a fresh re-aim. Checked against the *previous* value (before overwriting
       // it below) so this only fires on a genuine press->release transition, not every frame.
@@ -466,7 +546,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       }
       jetActiveRef.current = active;
     },
-    [level.buttonMotion]
+    [level.buttonMotion, level.chargeableJet]
   );
 
   const handleSecondaryHoldChange = useCallback((active: boolean) => {
@@ -478,7 +558,11 @@ export function GameCanvas({ level, onComplete }: Props) {
       <Tank width={width} height={height} />
       <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
-          {Array.from(new Set(level.ballColors)).map((color) => (
+          {/* Always include GOLD_COLOR/MAGNET_COLOR here (not just level.ballColors) — Phase 6's
+              golden/magnet balls use these as their label color but aren't part of a level's own
+              palette, so without this their gradient lookup below would silently miss and render
+              invisible (no fill) rather than error. */}
+          {Array.from(new Set([...level.ballColors, GOLD_COLOR, MAGNET_COLOR])).map((color) => (
             <RadialGradient key={color} id={ballGradientId(color)} cx="35%" cy="30%" r="75%">
               <Stop offset="0%" stopColor={shadeColor(color, 0.55)} />
               <Stop offset="55%" stopColor={color} />
@@ -563,7 +647,7 @@ export function GameCanvas({ level, onComplete }: Props) {
           <Text style={styles.comboText}>Combo ×{comboCount}</Text>
         </View>
       )}
-      <AirJetButton onHoldChange={handleHoldChange} offsetX={buttonOffsetX} />
+      <AirJetButton onHoldChange={handleHoldChange} offsetX={buttonOffsetX} charging={charging} />
       {twinOffsetX !== null && (
         <AirJetButton onHoldChange={handleSecondaryHoldChange} offsetX={twinOffsetX} variant="ghost" />
       )}
@@ -905,6 +989,43 @@ function triggerBonus(pw: PhysicsWorld, level: LevelConfig, x: number, y: number
   Matter.World.add(pw.world, bonusBall);
   playBonusChime();
   for (let i = 0; i < 4; i++) spawnBubble(pw.world, x, y);
+}
+
+/**
+ * Phase 6's golden-ball bonus: once (per level instance — tracked via goldenTriggeredRef) a ball
+ * whose color is GOLD_COLOR is found settled in any target, auto-fills a random other currently-
+ * *empty* target by spawning a new ball body positioned exactly at that target's rest position
+ * with zero velocity — the very next frame's normal settle check (computeSettledBalls) picks it
+ * up on its own, so no special-cased "instant fill" branch is needed anywhere else. No-op when
+ * the level has no goldenCount, when it's already fired, or when there's no empty target left.
+ */
+function triggerGoldenBonus(
+  pw: PhysicsWorld,
+  level: LevelConfig,
+  settledBalls: Map<string, Matter.Body>,
+  filled: Set<string>,
+  goldenTriggeredRef: React.MutableRefObject<boolean>,
+  width: number
+) {
+  if (!level.goldenCount || goldenTriggeredRef.current) return;
+
+  const goldenSettled = Array.from(settledBalls.values()).some((b) => b.label === `ball-${GOLD_COLOR}`);
+  if (!goldenSettled) return;
+
+  goldenTriggeredRef.current = true;
+
+  const emptyTargets = (level.targets as TargetConfig[]).filter((t) => !filled.has(t.id));
+  if (emptyTargets.length === 0) return;
+
+  const target = emptyTargets[Math.floor(Math.random() * emptyTargets.length)];
+  const targetX = width / 2 + target.dx;
+  const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
+  const color = level.ballColors[Math.floor(Math.random() * level.ballColors.length)];
+  const autoBall = Matter.Bodies.circle(targetX, restY, BALL_RADIUS, ballBodyOptions(color));
+  Matter.Body.setVelocity(autoBall, { x: 0, y: 0 });
+  Matter.World.add(pw.world, autoBall);
+  playBonusChime();
+  for (let i = 0; i < 4; i++) spawnBubble(pw.world, targetX, target.y);
 }
 
 /**
