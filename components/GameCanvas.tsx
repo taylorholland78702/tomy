@@ -173,6 +173,10 @@ const MAGNET_STRENGTH = 0.00035;
 /** Phase 6 Level 18's chargeable jet: hold past this long before releasing to add a power burst. */
 const CHARGE_THRESHOLD_MS = 700;
 const CHARGE_BURST_STRENGTH = JET_STRENGTH * 2.5;
+/** Phase 7's split buttons: how far each sits from center, px. */
+const SPLIT_OFFSET_X = 70;
+/** Phase 7 Levels 20-21's combined-press center burst: stronger than a normal single-side push. */
+const CENTER_BURST_STRENGTH = JET_STRENGTH * 1.8;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -220,6 +224,9 @@ export function GameCanvas({ level, onComplete }: Props) {
   const jetHoldStartAtRef = useRef(0);
   /** Phase 6's magnet ball: whether it was settled as of the previous frame's settle check. */
   const magnetSettledRef = useRef(false);
+  /** Phase 7 Level 21's swipe-to-angle: current drag-biased x offset for each split button's jet. */
+  const leftSwipeAngleRef = useRef(0);
+  const rightSwipeAngleRef = useRef(0);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -311,6 +318,9 @@ export function GameCanvas({ level, onComplete }: Props) {
     goldenTriggeredRef.current = false;
     jetHoldStartAtRef.current = 0;
     magnetSettledRef.current = false;
+    leftSwipeAngleRef.current = 0;
+    rightSwipeAngleRef.current = 0;
+
     setButtonOffsetX(0);
     setTwinOffsetX(null);
     setComboCount(0);
@@ -390,35 +400,62 @@ export function GameCanvas({ level, onComplete }: Props) {
         // if this feature didn't exist, while still protecting against jet disturbance.
         applyCupRetention(Matter.Composite.allBodies(pw.world), cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
       }
+      // Phase 7's split buttons: each side gets its own fixed x (offset by that side's swipe-drag
+      // bias on Level 21) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef
+      // (Phase 3's moving-button state, unused on Phase 7 levels since they never set
+      // buttonMotion) only applies when the level isn't split, so Phase 3/9 behavior is untouched.
+      const leftJetX = level.splitButtons ? width / 2 - SPLIT_OFFSET_X + leftSwipeAngleRef.current : jetXRef.current;
+      const rightJetX = level.splitButtons ? width / 2 + SPLIT_OFFSET_X + rightSwipeAngleRef.current : width / 2 + secondaryOffsetRef.current;
+      const leftClip = level.splitButtons ? { max: width / 2 } : undefined;
+      const rightClip = level.splitButtons ? { min: width / 2 } : undefined;
+
       if (jetActiveRef.current) {
         applyAirJet(
           pw.world,
-          jetXRef.current,
+          leftJetX,
           jetYRef.current,
           JET_STRENGTH,
           JET_BASE_COLUMN_HALF_WIDTH,
           JET_VERTICAL_RANGE,
           JET_FAN_RATE,
-          JET_SPREAD_STRENGTH
+          JET_SPREAD_STRENGTH,
+          leftClip
         );
-        spawnBubble(pw.world, jetXRef.current, height - 80);
+        spawnBubble(pw.world, leftJetX, height - 80);
       }
       if (secondaryActiveRef.current) {
-        // Level 9's temporary second button: an independent jet at its own x, reusing the exact
-        // same shape/strength constants and functions as the primary — applyAirJet already takes
-        // an arbitrary origin x, so no physics changes were needed to support a second one.
-        const secondaryJetX = width / 2 + secondaryOffsetRef.current;
+        // Level 9's temporary second button (or Phase 7's permanent right button): an independent
+        // jet at its own x, reusing the exact same shape/strength constants and functions as the
+        // primary — applyAirJet already takes an arbitrary origin x (and now an optional clip), so
+        // no new physics function was needed to support a second one.
         applyAirJet(
           pw.world,
-          secondaryJetX,
+          rightJetX,
           jetYRef.current,
           JET_STRENGTH,
           JET_BASE_COLUMN_HALF_WIDTH,
           JET_VERTICAL_RANGE,
           JET_FAN_RATE,
+          JET_SPREAD_STRENGTH,
+          rightClip
+        );
+        spawnBubble(pw.world, rightJetX, height - 80);
+      }
+      if (level.splitButtons && level.splitButtons !== 'basic' && jetActiveRef.current && secondaryActiveRef.current) {
+        // Phase 7 Levels 20-21: pressing both together adds a strong, unclipped center burst that
+        // reaches the middle column neither half-restricted side jet can reach alone — the actual
+        // payoff for "pressing both together".
+        applyAirJet(
+          pw.world,
+          width / 2,
+          jetYRef.current,
+          CENTER_BURST_STRENGTH,
+          JET_BASE_COLUMN_HALF_WIDTH,
+          JET_VERTICAL_RANGE,
+          JET_FAN_RATE,
           JET_SPREAD_STRENGTH
         );
-        spawnBubble(pw.world, secondaryJetX, height - 80);
+        spawnBubble(pw.world, width / 2, height - 80);
       }
       updateBubbles(pw.world, 1600);
 
@@ -553,6 +590,14 @@ export function GameCanvas({ level, onComplete }: Props) {
     secondaryActiveRef.current = active;
   }, []);
 
+  const handleLeftSwipeAngle = useCallback((dx: number) => {
+    leftSwipeAngleRef.current = dx;
+  }, []);
+
+  const handleRightSwipeAngle = useCallback((dx: number) => {
+    rightSwipeAngleRef.current = dx;
+  }, []);
+
   return (
     <View style={{ flex: 1 }}>
       <Tank width={width} height={height} />
@@ -647,9 +692,21 @@ export function GameCanvas({ level, onComplete }: Props) {
           <Text style={styles.comboText}>Combo ×{comboCount}</Text>
         </View>
       )}
-      <AirJetButton onHoldChange={handleHoldChange} offsetX={buttonOffsetX} charging={charging} />
-      {twinOffsetX !== null && (
-        <AirJetButton onHoldChange={handleSecondaryHoldChange} offsetX={twinOffsetX} variant="ghost" />
+      <AirJetButton
+        onHoldChange={handleHoldChange}
+        offsetX={level.splitButtons ? -SPLIT_OFFSET_X : buttonOffsetX}
+        charging={charging}
+        swipeEnabled={level.splitButtons === 'swipe'}
+        onSwipeAngle={level.splitButtons === 'swipe' ? handleLeftSwipeAngle : undefined}
+      />
+      {(twinOffsetX !== null || !!level.splitButtons) && (
+        <AirJetButton
+          onHoldChange={handleSecondaryHoldChange}
+          offsetX={level.splitButtons ? SPLIT_OFFSET_X : twinOffsetX ?? 0}
+          variant={level.splitButtons ? 'primary' : 'ghost'}
+          swipeEnabled={level.splitButtons === 'swipe'}
+          onSwipeAngle={level.splitButtons === 'swipe' ? handleRightSwipeAngle : undefined}
+        />
       )}
       {needsPermission && (
         <View style={styles.permissionOverlay} pointerEvents="box-none">

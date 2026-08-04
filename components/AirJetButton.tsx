@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Pressable, StyleSheet, Animated } from 'react-native';
+import { Pressable, StyleSheet, Animated, PanResponder, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
@@ -14,7 +14,14 @@ interface Props {
   variant?: 'primary' | 'ghost';
   /** Phase 6 Level 18: true once a held press has passed the charge threshold — a warm gold ring signals "ready to release for a power burst". */
   charging?: boolean;
+  /** Phase 7 Level 21: track horizontal drag while held instead of a plain Pressable, so the player can angle a launch. */
+  swipeEnabled?: boolean;
+  /** Phase 7 Level 21: horizontal drag distance from the touch-start point, continuously while held; called with 0 on release so every new press starts straight. */
+  onSwipeAngle?: (dx: number) => void;
 }
+
+/** Phase 7 Level 21: how far a drag can bias the launch, px, before clamping. */
+const SWIPE_MAX_OFFSET = 50;
 
 const BUTTON_SIZE = 57;
 const SOCKET_SIZE = BUTTON_SIZE + 18;
@@ -30,7 +37,14 @@ const SOCKET_BOTTOM_OFFSET = 50;
  * button: a glossy raised dome sitting in a recessed dark socket, pressing down and flattening
  * its shadow when held. Heavy tap on press, soft ticks while held.
  */
-export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary', charging = false }: Props) {
+export function AirJetButton({
+  onHoldChange,
+  offsetX = 0,
+  variant = 'primary',
+  charging = false,
+  swipeEnabled = false,
+  onSwipeAngle,
+}: Props) {
   const pressAnim = useRef(new Animated.Value(0)).current; // 0 = raised, 1 = pressed in
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -48,7 +62,24 @@ export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary', c
       clearInterval(holdInterval.current);
       holdInterval.current = null;
     }
+    onSwipeAngle?.(0); // every new press starts straight, not wherever the last drag left off
   };
+
+  // Only built/used when swipeEnabled — Phase 1-6 buttons keep the plain Pressable below
+  // untouched, so this adds zero risk to every level that isn't Phase 7 Level 21.
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => startPress(),
+      onPanResponderMove: (_evt, gesture) => {
+        const clamped = Math.max(-SWIPE_MAX_OFFSET, Math.min(SWIPE_MAX_OFFSET, gesture.dx));
+        onSwipeAngle?.(clamped);
+      },
+      onPanResponderRelease: () => endPress(),
+      onPanResponderTerminate: () => endPress(),
+    })
+  ).current;
 
   const scale = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] });
   const translateY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 3] });
@@ -63,11 +94,19 @@ export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary', c
       ]}
     >
       <Animated.View style={[styles.buttonWrap, { transform: [{ scale }, { translateY }] }]}>
-        <Pressable onPressIn={startPress} onPressOut={endPress}>
-          <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
-            <Animated.View style={styles.highlight} />
-          </LinearGradient>
-        </Pressable>
+        {swipeEnabled ? (
+          <View {...panResponder.panHandlers}>
+            <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
+              <Animated.View style={styles.highlight} />
+            </LinearGradient>
+          </View>
+        ) : (
+          <Pressable onPressIn={startPress} onPressOut={endPress}>
+            <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
+              <Animated.View style={styles.highlight} />
+            </LinearGradient>
+          </Pressable>
+        )}
       </Animated.View>
     </Animated.View>
   );

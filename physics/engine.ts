@@ -299,12 +299,18 @@ export function applyAirJet(
   baseColumnHalfWidth: number,
   verticalRange: number,
   fanRate: number,
-  spreadStrength: number
+  spreadStrength: number,
+  clipX?: { min?: number; max?: number }
 ) {
   const bodies = Matter.Composite.allBodies(world);
 
   for (const body of bodies) {
     if (body.isStatic) continue;
+    // Phase 7's split buttons: a hard boundary (not just the falloff below) so each button only
+    // ever affects balls on its own half, however strong the press — the natural distance falloff
+    // alone would let a strong-enough hold reach across the tank, undermining the "split" premise.
+    if (clipX?.min !== undefined && body.position.x < clipX.min) continue;
+    if (clipX?.max !== undefined && body.position.x > clipX.max) continue;
 
     const heightRisen = Math.max(0, jetY - body.position.y); // 0 at/below the origin
     const verticalFalloff = Math.max(0, 1 - heightRisen / verticalRange);

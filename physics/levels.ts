@@ -27,6 +27,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 4, name: 'Chain Reaction' },
   { id: 5, name: 'Undertow' },
   { id: 6, name: 'Bonus Tokens' },
+  { id: 7, name: 'Split Stream' },
 ];
 
 export interface LevelConfig {
@@ -93,6 +94,13 @@ export interface LevelConfig {
   magnetCount?: number;
   /** Phase 6's power-up mechanic: holding the button past a threshold before releasing adds a one-time power burst on release. */
   chargeableJet?: boolean;
+  /**
+   * Phase 7's "split stream" mechanic: one evolving control scheme (like buttonMotion), not
+   * independent flags — 'basic' splits the single button into two, each hard-restricted to only
+   * launching balls on its own half; 'centerBurst' keeps that and adds a strong center burst when
+   * both buttons are held together; 'swipe' keeps both and adds drag-to-angle on each button.
+   */
+  splitButtons?: 'basic' | 'centerBurst' | 'swipe';
 }
 
 const BALL_PALETTE = [
@@ -375,5 +383,41 @@ export const LEVELS: LevelConfig[] = [
     ballCount: 9,
     ballColors: BALL_PALETTE,
     chargeableJet: true,
+  },
+  {
+    id: 'level-19',
+    phase: 7,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Split Stream',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    splitButtons: 'basic',
+  },
+  {
+    id: 'level-20',
+    phase: 7,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Center Clear',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    splitButtons: 'centerBurst',
+  },
+  {
+    id: 'level-21',
+    phase: 7,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Angled Stream',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    splitButtons: 'swipe',
   },
 ];
