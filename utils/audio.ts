@@ -44,3 +44,40 @@ export function playCountdownTick(urgency: number) {
   osc.start(now);
   osc.stop(now + 0.1);
 }
+
+/**
+ * Short celebratory chime for Phase 4's chain-match/rainbow-cup bonuses (see triggerBonus in
+ * GameCanvas.tsx). Two quick notes a major third apart, played back-to-back — same synthesis
+ * approach and web-only/native-no-op split as playCountdownTick, just a distinct, brighter shape
+ * so a "bonus" reads differently from the countdown's plain tick.
+ */
+export function playBonusChime() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+
+  const now = ctx.currentTime;
+  const notes = [
+    { freq: 880, start: 0 }, // A5
+    { freq: 1108.73, start: 0.07 }, // C#6, a major third above
+  ];
+
+  for (const { freq, start } of notes) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    const noteStart = now + start;
+    gain.gain.setValueAtTime(0, noteStart);
+    gain.gain.linearRampToValueAtTime(0.08, noteStart + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.14);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(noteStart);
+    osc.stop(noteStart + 0.15);
+  }
+}

@@ -24,6 +24,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 1, name: 'Foundations' },
   { id: 2, name: 'The Clock' },
   { id: 3, name: 'Moving Target' },
+  { id: 4, name: 'Chain Reaction' },
 ];
 
 export interface LevelConfig {
@@ -55,6 +56,18 @@ export interface LevelConfig {
    * stays centered, i.e. every Phase 1/2 level, unchanged from the original design.
    */
   buttonMotion?: 'drift' | 'jump' | 'twin';
+  /**
+   * Phase 4's "chain reaction" mechanic: groups of target ids (see TOP_ROW etc.) that count as a
+   * same-row match when every cup in the group holds a settled ball AND all those balls share the
+   * same color. Only meaningful when chainMatchBonus is also set.
+   */
+  matchRows?: string[][];
+  /** Landing all of a matchRows group with matching colors spawns a bonus ball + chime once per group. */
+  chainMatchBonus?: boolean;
+  /** Enables the combo meter: quick consecutive landings build a streak that decays if you pause. */
+  comboMeter?: boolean;
+  /** Enables the temporary bonus cup that cycles between random unfilled targets. */
+  rainbowCup?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -201,5 +214,59 @@ export const LEVELS: LevelConfig[] = [
     ballCount: 9,
     ballColors: BALL_PALETTE,
     buttonMotion: 'twin',
+  },
+  {
+    id: 'level-10',
+    phase: 4,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Chain Bonus',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    // All three balls share a color so the very first completion always fires the chain-match
+    // bonus — a guaranteed, unmistakable intro to the mechanic before later levels make it merely
+    // possible rather than automatic.
+    ballColors: [BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[0]],
+    matchRows: [['t1', 't2', 't3']],
+    chainMatchBonus: true,
+  },
+  {
+    id: 'level-11',
+    phase: 4,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Combo Streak',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    // One color repeated 3x keeps a chain match achievable (not guaranteed) alongside the new
+    // combo mechanic, rather than the six fully-distinct colors every other 6-ball level uses.
+    ballColors: [BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[1], BALL_PALETTE[2], BALL_PALETTE[3]],
+    matchRows: [
+      ['t1', 't2', 't3'],
+      ['t4', 't5', 't6'],
+    ],
+    chainMatchBonus: true,
+    comboMeter: true,
+  },
+  {
+    id: 'level-12',
+    phase: 4,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Rainbow Rush',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    matchRows: [
+      ['t1', 't2', 't3'],
+      ['t4', 't5', 't6'],
+      ['t7', 't8', 't9'],
+    ],
+    chainMatchBonus: true,
+    comboMeter: true,
+    rainbowCup: true,
   },
 ];

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Dimensions, Pressable, Text, StyleSheet } from 'react-native';
 import Matter from 'matter-js';
-import Svg, { Circle, Defs, Line, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 import { Tank } from './Tank';
 import { AirJetButton } from './AirJetButton';
 import {
@@ -25,7 +25,7 @@ import {
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
-import { playCountdownTick } from '../utils/audio';
+import { playCountdownTick, playBonusChime } from '../utils/audio';
 
 /**
  * SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS).
@@ -64,6 +64,27 @@ function ringColor(fraction: number): string {
 }
 
 const ballGradientId = (color: string) => `ball-grad-${color.replace('#', '')}`;
+
+/**
+ * Shared Matter.js body options for every playable ball — the initial level-setup spawn and
+ * Phase 4's bonus-ball spawn (see triggerBonus) both use this, so a bonus ball behaves identically
+ * to a normal one rather than needing its own tuning.
+ */
+function ballBodyOptions(color: string): Matter.IBodyDefinition {
+  return {
+    // Higher than before (0.4) so balls bounce apart on contact rather than settling into a
+    // clumped pile — low restitution combined with the ramp's constant pull toward its low point
+    // made resting balls read as "stuck together".
+    restitution: 0.6,
+    frictionAir: WATER_FRICTION_AIR,
+    // Lighter than matter's circle default (0.001) so the jet's forces — which aren't
+    // mass-scaled — push these around more, and low friction so they roll down the ramp instead
+    // of sticking to it.
+    density: BALL_DENSITY,
+    friction: 0.006,
+    label: `ball-${color}`,
+  };
+}
 
 interface Props {
   level: LevelConfig;
@@ -126,6 +147,11 @@ const JUMP_MIN_DISTANCE_FRACTION = 0.4;
 /** Level 9's temporary second button: how often it appears, and how long it stays up. */
 const TWIN_APPEAR_INTERVAL_MS = 4500;
 const TWIN_VISIBLE_MS = 1800;
+/** Phase 4's combo meter: a landing within this many ms of the last one extends the streak. */
+const COMBO_WINDOW_MS = 3000;
+/** Phase 4 Level 12's rainbow bonus cup: how often it appears, and how long it stays up. */
+const RAINBOW_APPEAR_INTERVAL_MS = 5500;
+const RAINBOW_VISIBLE_MS = 2500;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -152,11 +178,22 @@ export function GameCanvas({ level, onComplete }: Props) {
   const twinNextAtRef = useRef(0);
   const twinHideAtRef = useRef(0);
   const twinVisibleRef = useRef(false);
+  /** Phase 4's chain-match mechanic: keys of matchRows groups that have already fired their bonus this level instance. */
+  const matchedRowsRef = useRef<Set<string>>(new Set());
+  /** Phase 4's combo meter: current streak length, and the timestamp of the last landing. */
+  const comboCountRef = useRef(0);
+  const comboLastLandingAtRef = useRef(0);
+  /** Phase 4 Level 12's rainbow bonus cup: which target (if any) is currently active, and its schedule. */
+  const rainbowTargetIdRef = useRef<string | null>(null);
+  const rainbowNextAtRef = useRef(0);
+  const rainbowHideAtRef = useRef(0);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
   const [buttonOffsetX, setButtonOffsetX] = useState(0);
   const [twinOffsetX, setTwinOffsetX] = useState<number | null>(null);
+  const [comboCount, setComboCount] = useState(0);
+  const [rainbowTargetId, setRainbowTargetId] = useState<string | null>(null);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -189,19 +226,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       const row = Math.floor(i / cols);
       const rowCount = Math.min(cols, level.ballCount - row * cols);
       const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
-      return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, {
-        // Higher than before (0.4) so balls bounce apart on contact rather than settling into a
-        // clumped pile — low restitution combined with the ramp's constant pull toward its low
-        // point made resting balls read as "stuck together".
-        restitution: 0.6,
-        frictionAir: WATER_FRICTION_AIR,
-        // Lighter than matter's circle default (0.001) so the jet's forces — which aren't
-        // mass-scaled — push these around more, and low friction so they roll down the ramp
-        // instead of sticking to it.
-        density: BALL_DENSITY,
-        friction: 0.006,
-        label: `ball-${color}`,
-      });
+      return Matter.Bodies.circle(rowStartX + col * spacing, rampInfo.lowPoint.y - 24 - row * spacing, BALL_RADIUS, ballBodyOptions(color));
     });
     Matter.World.add(pw.world, balls);
 
@@ -216,8 +241,16 @@ export function GameCanvas({ level, onComplete }: Props) {
     twinNextAtRef.current = Date.now() + TWIN_APPEAR_INTERVAL_MS;
     twinHideAtRef.current = 0;
     twinVisibleRef.current = false;
+    matchedRowsRef.current = new Set();
+    comboCountRef.current = 0;
+    comboLastLandingAtRef.current = 0;
+    rainbowTargetIdRef.current = null;
+    rainbowNextAtRef.current = Date.now() + RAINBOW_APPEAR_INTERVAL_MS;
+    rainbowHideAtRef.current = 0;
     setButtonOffsetX(0);
     setTwinOffsetX(null);
+    setComboCount(0);
+    setRainbowTargetId(null);
 
     let lastTime = Date.now();
     const loop = () => {
@@ -290,7 +323,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       Matter.Engine.update(pw.engine, delta);
 
       const settledBalls = computeSettledBalls(pw, level, width);
-      const filledChanged = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
+      const { changed: filledChanged, newlyFilled } = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
         setTimeout(onComplete, 1200);
       });
@@ -299,8 +332,26 @@ export function GameCanvas({ level, onComplete }: Props) {
       updateBallLifecycle(pw, level, settledBalls, ballAgeRef.current, ballScaleRef.current, delta);
       updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);
 
+      const rampLowX = width / 2;
+      const rampLowY = rampBaseY;
+      const spawnBonus = (x: number, y: number) => triggerBonus(pw, level, x, y, rampLowX, rampLowY);
+      checkChainMatches(level, settledBalls, matchedRowsRef, width, spawnBonus);
+      updateComboMeter(level, newlyFilled, comboCountRef, comboLastLandingAtRef, now);
+      const rainbowVisibleId = updateRainbowCup(
+        level,
+        now,
+        settledBalls,
+        rainbowTargetIdRef,
+        rainbowNextAtRef,
+        rainbowHideAtRef,
+        width,
+        spawnBonus
+      );
+
       setButtonOffsetX(buttonOffsetRef.current);
       setTwinOffsetX(twinVisible ? secondaryOffsetRef.current : null);
+      setComboCount(comboCountRef.current);
+      setRainbowTargetId(rainbowVisibleId);
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
@@ -362,6 +413,15 @@ export function GameCanvas({ level, onComplete }: Props) {
               <Stop offset="100%" stopColor={shadeColor(color, -0.35)} />
             </RadialGradient>
           ))}
+          {level.rainbowCup && (
+            <LinearGradient id="rainbowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <Stop offset="0%" stopColor="#FF3B7F" />
+              <Stop offset="25%" stopColor="#FFD23B" />
+              <Stop offset="50%" stopColor="#3BFFA0" />
+              <Stop offset="75%" stopColor="#3BD6FF" />
+              <Stop offset="100%" stopColor="#8A5CFF" />
+            </LinearGradient>
+          )}
         </Defs>
         <Line
           x1={ramp.leftPoint.x}
@@ -384,16 +444,19 @@ export function GameCanvas({ level, onComplete }: Props) {
         {level.pegs.map((p) => (
           <Circle key={p.id} cx={width / 2 + p.dx} cy={p.y} r={6} fill="rgba(255,255,255,0.55)" stroke="rgba(255,255,255,0.8)" strokeWidth={1} />
         ))}
-        {level.targets.map((t) => (
-          <Path
-            key={t.id}
-            d={cupPath(width / 2 + t.dx, t.y)}
-            fill={filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
-            stroke={filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
-            strokeWidth={5}
-            strokeLinecap="round"
-          />
-        ))}
+        {level.targets.map((t) => {
+          const isRainbow = t.id === rainbowTargetId;
+          return (
+            <Path
+              key={t.id}
+              d={cupPath(width / 2 + t.dx, t.y)}
+              fill={isRainbow ? 'rgba(255,255,255,0.3)' : filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
+              stroke={isRainbow ? 'url(#rainbowGradient)' : filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
+              strokeWidth={isRainbow ? 6 : 5}
+              strokeLinecap="round"
+            />
+          );
+        })}
         {renderBodies.map((b) => (
           <React.Fragment key={b.id}>
             <Circle
@@ -423,6 +486,11 @@ export function GameCanvas({ level, onComplete }: Props) {
           </React.Fragment>
         ))}
       </Svg>
+      {comboCount > 1 && (
+        <View style={styles.comboPill} pointerEvents="none">
+          <Text style={styles.comboText}>Combo ×{comboCount}</Text>
+        </View>
+      )}
       <AirJetButton onHoldChange={handleHoldChange} offsetX={buttonOffsetX} />
       {twinOffsetX !== null && (
         <AirJetButton onHoldChange={handleSecondaryHoldChange} offsetX={twinOffsetX} variant="ghost" />
@@ -458,6 +526,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
     textAlign: 'center',
+  },
+  comboPill: {
+    position: 'absolute',
+    top: 108,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,210,59,0.6)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  comboText: {
+    color: '#FFD23B',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
 
@@ -637,6 +721,10 @@ function updateCountdownTick(
  * every frame in both directions: a cup un-fills the moment its ball is knocked out or lifted
  * back out by the jet (or, in Phase 2, sinks away after its countdown expires), not just once
  * when a ball first lands.
+ *
+ * `newlyFilled` lists only the ids that transitioned unfilled->filled *this frame* — Phase 4's
+ * combo meter needs a genuine new landing, not "still filled from before", to know a fresh shot
+ * was made.
  */
 function checkTargets(
   settledBalls: Map<string, Matter.Body>,
@@ -644,10 +732,11 @@ function checkTargets(
   filled: Set<string>,
   wonRef: React.MutableRefObject<boolean>,
   onWin: () => void
-): boolean {
-  if (wonRef.current) return false;
+): { changed: boolean; newlyFilled: string[] } {
+  if (wonRef.current) return { changed: false, newlyFilled: [] };
 
   let changed = false;
+  const newlyFilled: string[] = [];
 
   for (const target of level.targets as TargetConfig[]) {
     const occupied = settledBalls.has(target.id);
@@ -655,6 +744,7 @@ function checkTargets(
     if (occupied && !filled.has(target.id)) {
       filled.add(target.id);
       changed = true;
+      newlyFilled.push(target.id);
       hapticLanding();
     } else if (!occupied && filled.has(target.id)) {
       filled.delete(target.id);
@@ -667,5 +757,123 @@ function checkTargets(
     onWin();
   }
 
-  return changed;
+  return { changed, newlyFilled };
+}
+
+/**
+ * Phase 4's chain-match bonus: for each group in level.matchRows, if every cup in the group
+ * currently holds a settled ball AND those balls all share the same color, spawn a bonus (see
+ * triggerBonus) at the group's middle cup. Each group can only fire once per level instance
+ * (tracked via matchedRowsRef) so a match that stays formed doesn't spam bonuses every frame.
+ * No-op when the level has no chainMatchBonus/matchRows.
+ */
+function checkChainMatches(
+  level: LevelConfig,
+  settledBalls: Map<string, Matter.Body>,
+  matchedRowsRef: React.MutableRefObject<Set<string>>,
+  width: number,
+  onBonus: (x: number, y: number) => void
+) {
+  if (!level.chainMatchBonus || !level.matchRows) return;
+
+  for (const group of level.matchRows) {
+    const key = group.join(',');
+    if (matchedRowsRef.current.has(key)) continue;
+
+    const balls = group.map((id) => settledBalls.get(id));
+    if (balls.some((b) => !b)) continue;
+
+    const colors = balls.map((b) => b!.label.replace('ball-', ''));
+    if (!colors.every((c) => c === colors[0])) continue;
+
+    matchedRowsRef.current.add(key);
+
+    const targets = level.targets as TargetConfig[];
+    const middle = targets.find((t) => t.id === group[1]) ?? targets.find((t) => t.id === group[0])!;
+    onBonus(width / 2 + middle.dx, middle.y);
+  }
+}
+
+/**
+ * Phase 4's bonus reward, shared by chain matches and the rainbow cup: spawns one extra playable
+ * ball at the ramp's low point (same body setup as the initial spawn, via ballBodyOptions, so it
+ * behaves identically to a normal ball — a genuinely useful extra chance, not just a visual prop),
+ * plays a chime, and bursts a few celebratory bubbles at the match/cup location.
+ */
+function triggerBonus(pw: PhysicsWorld, level: LevelConfig, x: number, y: number, rampLowX: number, rampLowY: number) {
+  const color = level.ballColors[Math.floor(Math.random() * level.ballColors.length)];
+  const bonusBall = Matter.Bodies.circle(rampLowX, rampLowY - 24, BALL_RADIUS, ballBodyOptions(color));
+  Matter.World.add(pw.world, bonusBall);
+  playBonusChime();
+  for (let i = 0; i < 4; i++) spawnBubble(pw.world, x, y);
+}
+
+/**
+ * Phase 4's combo meter: a landing within COMBO_WINDOW_MS of the previous one extends the streak;
+ * a longer gap resets it. Decay is checked independently of new landings so the meter visibly
+ * drops back to 0 if the player pauses too long, not just when they land again. No-op when the
+ * level has no comboMeter.
+ */
+function updateComboMeter(
+  level: LevelConfig,
+  newlyFilled: string[],
+  comboCountRef: React.MutableRefObject<number>,
+  comboLastLandingAtRef: React.MutableRefObject<number>,
+  now: number
+) {
+  if (!level.comboMeter) return;
+
+  if (newlyFilled.length > 0) {
+    const withinWindow = now - comboLastLandingAtRef.current <= COMBO_WINDOW_MS;
+    comboCountRef.current = withinWindow ? comboCountRef.current + newlyFilled.length : newlyFilled.length;
+    comboLastLandingAtRef.current = now;
+  } else if (comboCountRef.current > 0 && now - comboLastLandingAtRef.current > COMBO_WINDOW_MS) {
+    comboCountRef.current = 0;
+  }
+}
+
+/**
+ * Phase 4 Level 12's rainbow bonus cup: cycles a random currently-unfilled target as "active"
+ * (rendered with a rainbow ring) for RAINBOW_VISIBLE_MS at a time, RAINBOW_APPEAR_INTERVAL_MS
+ * apart. Landing any ball in the active target while it's up triggers a bonus (see triggerBonus)
+ * and immediately hides it; otherwise it hides on its own after its window expires. Returns the
+ * currently-active target id (or null), for rendering. No-op (always null) when the level has no
+ * rainbowCup.
+ */
+function updateRainbowCup(
+  level: LevelConfig,
+  now: number,
+  settledBalls: Map<string, Matter.Body>,
+  rainbowTargetIdRef: React.MutableRefObject<string | null>,
+  rainbowNextAtRef: React.MutableRefObject<number>,
+  rainbowHideAtRef: React.MutableRefObject<number>,
+  width: number,
+  onBonus: (x: number, y: number) => void
+): string | null {
+  if (!level.rainbowCup) return null;
+
+  const targets = level.targets as TargetConfig[];
+
+  if (rainbowTargetIdRef.current === null) {
+    if (now >= rainbowNextAtRef.current) {
+      const unfilled = targets.filter((t) => !settledBalls.has(t.id));
+      const pool = unfilled.length > 0 ? unfilled : targets;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      rainbowTargetIdRef.current = pick.id;
+      rainbowHideAtRef.current = now + RAINBOW_VISIBLE_MS;
+    }
+  } else {
+    const activeId = rainbowTargetIdRef.current;
+    if (settledBalls.has(activeId)) {
+      const target = targets.find((t) => t.id === activeId)!;
+      onBonus(width / 2 + target.dx, target.y);
+      rainbowTargetIdRef.current = null;
+      rainbowNextAtRef.current = now + RAINBOW_APPEAR_INTERVAL_MS;
+    } else if (now >= rainbowHideAtRef.current) {
+      rainbowTargetIdRef.current = null;
+      rainbowNextAtRef.current = now + RAINBOW_APPEAR_INTERVAL_MS;
+    }
+  }
+
+  return rainbowTargetIdRef.current;
 }
