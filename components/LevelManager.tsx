@@ -29,6 +29,13 @@ export function LevelManager() {
 
   const handleRestart = () => setResetKey((k) => k + 1);
 
+  const isFirstLevel = levelIndex === 0;
+  const jumpTo = (index: number) => {
+    if (index < 0 || index >= LEVELS.length) return;
+    setBanner(null);
+    setLevelIndex(index);
+  };
+
   return (
     <View style={styles.root}>
       <GameCanvas key={`${level.id}-${resetKey}`} level={level} onComplete={handleComplete} />
@@ -39,6 +46,25 @@ export function LevelManager() {
         <Text style={styles.hudText}>
           Level {level.levelInPhase} · {level.name}
         </Text>
+        <View style={styles.navRow}>
+          <Pressable
+            style={[styles.navButton, isFirstLevel && styles.navButtonDisabled]}
+            disabled={isFirstLevel}
+            onPress={() => jumpTo(levelIndex - 1)}
+          >
+            <Text style={styles.navButtonText}>‹</Text>
+          </Pressable>
+          <Text style={styles.navCounterText}>
+            {levelIndex + 1} / {LEVELS.length}
+          </Text>
+          <Pressable
+            style={[styles.navButton, isLastLevel && styles.navButtonDisabled]}
+            disabled={isLastLevel}
+            onPress={() => jumpTo(levelIndex + 1)}
+          >
+            <Text style={styles.navButtonText}>›</Text>
+          </Pressable>
+        </View>
       </View>
       <Pressable style={styles.restartButton} onPress={handleRestart}>
         <Text style={styles.restartButtonText}>Restart</Text>
@@ -74,6 +100,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.85,
     letterSpacing: 0.5,
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 10,
+  },
+  navButton: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonDisabled: {
+    opacity: 0.3,
+  },
+  navButtonText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  navCounterText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.7,
   },
   restartButton: {
     position: 'absolute',
