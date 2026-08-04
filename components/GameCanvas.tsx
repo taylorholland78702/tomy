@@ -113,6 +113,19 @@ const FIZZY_MIN_SCALE = 0.55;
 /** Countdown tick cadence range (ms) — calm at full life, urgent as a ball nears expiry. */
 const TICK_INTERVAL_CALM_MS = 900;
 const TICK_INTERVAL_URGENT_MS = 200;
+/**
+ * Phase 3's moving-target mechanic: how far the Air Jet button can shift from center, px. Kept
+ * well clear of the fixed Restart/tilt-permission buttons at the screen edges (see
+ * LevelManager.tsx / GameCanvas.tsx's own bottom-corner overlays).
+ */
+const BUTTON_RANGE_X = 80;
+/** One full left-right-left drift cycle, ms — slow and predictable per the Level 7 brief. */
+const DRIFT_PERIOD_MS = 5000;
+/** A fresh jump must land at least this fraction of the range away, so it always reads as a real re-aim. */
+const JUMP_MIN_DISTANCE_FRACTION = 0.4;
+/** Level 9's temporary second button: how often it appears, and how long it stays up. */
+const TWIN_APPEAR_INTERVAL_MS = 4500;
+const TWIN_VISIBLE_MS = 1800;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -130,9 +143,20 @@ export function GameCanvas({ level, onComplete }: Props) {
   const ballScaleRef = useRef<Map<number, number>>(new Map());
   /** Phase 2 Levels 2-3's countdown tick: timestamp the next tick is allowed to play. */
   const nextTickAtRef = useRef(0);
+  /** Phase 3's moving-target mechanic: primary button's current x offset from center, px. */
+  const buttonOffsetRef = useRef(0);
+  /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
+  const secondaryActiveRef = useRef(false);
+  const secondaryOffsetRef = useRef(0);
+  /** Level 9's temporary second button: ms timestamps driving its appear/hide schedule. */
+  const twinNextAtRef = useRef(0);
+  const twinHideAtRef = useRef(0);
+  const twinVisibleRef = useRef(false);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
+  const [buttonOffsetX, setButtonOffsetX] = useState(0);
+  const [twinOffsetX, setTwinOffsetX] = useState<number | null>(null);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -186,6 +210,14 @@ export function GameCanvas({ level, onComplete }: Props) {
     ballAgeRef.current = new Map();
     ballScaleRef.current = new Map();
     nextTickAtRef.current = 0;
+    buttonOffsetRef.current = 0;
+    secondaryActiveRef.current = false;
+    secondaryOffsetRef.current = 0;
+    twinNextAtRef.current = Date.now() + TWIN_APPEAR_INTERVAL_MS;
+    twinHideAtRef.current = 0;
+    twinVisibleRef.current = false;
+    setButtonOffsetX(0);
+    setTwinOffsetX(null);
 
     let lastTime = Date.now();
     const loop = () => {
@@ -193,10 +225,28 @@ export function GameCanvas({ level, onComplete }: Props) {
       const delta = Math.min(now - lastTime, 33);
       lastTime = now;
 
-      applyWaterPhysics(Matter.Composite.allBodies(pw.world));
-      applyRampGuide(Matter.Composite.allBodies(pw.world), jetXRef.current, rampBaseY, RAMP_GUIDE_STRENGTH);
+      const twinVisible = updateButtonMotion(
+        level,
+        now,
+        buttonOffsetRef,
+        secondaryOffsetRef,
+        secondaryActiveRef,
+        twinVisibleRef,
+        twinNextAtRef,
+        twinHideAtRef
+      );
+      if (level.buttonMotion) jetXRef.current = width / 2 + buttonOffsetRef.current;
 
-      if (jetActiveRef.current) {
+      applyWaterPhysics(Matter.Composite.allBodies(pw.world));
+      // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
+      // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
+      // origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
+      // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving)
+      // geometry, not wherever the button currently is.
+      applyRampGuide(Matter.Composite.allBodies(pw.world), width / 2, rampBaseY, RAMP_GUIDE_STRENGTH);
+
+      const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
+      if (anyJetActive) {
         // Retention only opposes the jet, not general gravity/tilt: gravity forces are
         // mass-scaled and these balls are light, so a retention strength that meaningfully
         // resists the (unscaled) jet is strong enough to make even extreme tilt unable to
@@ -204,6 +254,8 @@ export function GameCanvas({ level, onComplete }: Props) {
         // "jet held" keeps tilt working through plain gravity + the cup's rigid walls, same as
         // if this feature didn't exist, while still protecting against jet disturbance.
         applyCupRetention(Matter.Composite.allBodies(pw.world), cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
+      }
+      if (jetActiveRef.current) {
         applyAirJet(
           pw.world,
           jetXRef.current,
@@ -215,6 +267,23 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_SPREAD_STRENGTH
         );
         spawnBubble(pw.world, jetXRef.current, height - 80);
+      }
+      if (secondaryActiveRef.current) {
+        // Level 9's temporary second button: an independent jet at its own x, reusing the exact
+        // same shape/strength constants and functions as the primary — applyAirJet already takes
+        // an arbitrary origin x, so no physics changes were needed to support a second one.
+        const secondaryJetX = width / 2 + secondaryOffsetRef.current;
+        applyAirJet(
+          pw.world,
+          secondaryJetX,
+          jetYRef.current,
+          JET_STRENGTH,
+          JET_BASE_COLUMN_HALF_WIDTH,
+          JET_VERTICAL_RANGE,
+          JET_FAN_RATE,
+          JET_SPREAD_STRENGTH
+        );
+        spawnBubble(pw.world, secondaryJetX, height - 80);
       }
       updateBubbles(pw.world, 1600);
 
@@ -229,6 +298,9 @@ export function GameCanvas({ level, onComplete }: Props) {
 
       updateBallLifecycle(pw, level, settledBalls, ballAgeRef.current, ballScaleRef.current, delta);
       updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);
+
+      setButtonOffsetX(buttonOffsetRef.current);
+      setTwinOffsetX(twinVisible ? secondaryOffsetRef.current : null);
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
@@ -261,8 +333,21 @@ export function GameCanvas({ level, onComplete }: Props) {
     };
   }, [level, width, height, onComplete]);
 
-  const handleHoldChange = useCallback((active: boolean) => {
-    jetActiveRef.current = active;
+  const handleHoldChange = useCallback(
+    (active: boolean) => {
+      // Phase 3 Levels 8-9: jump to a new spot the instant the button is released, so every
+      // press requires a fresh re-aim. Checked against the *previous* value (before overwriting
+      // it below) so this only fires on a genuine press->release transition, not every frame.
+      if (!active && jetActiveRef.current && (level.buttonMotion === 'jump' || level.buttonMotion === 'twin')) {
+        buttonOffsetRef.current = pickJumpOffset(buttonOffsetRef.current);
+      }
+      jetActiveRef.current = active;
+    },
+    [level.buttonMotion]
+  );
+
+  const handleSecondaryHoldChange = useCallback((active: boolean) => {
+    secondaryActiveRef.current = active;
   }, []);
 
   return (
@@ -338,7 +423,10 @@ export function GameCanvas({ level, onComplete }: Props) {
           </React.Fragment>
         ))}
       </Svg>
-      <AirJetButton onHoldChange={handleHoldChange} />
+      <AirJetButton onHoldChange={handleHoldChange} offsetX={buttonOffsetX} />
+      {twinOffsetX !== null && (
+        <AirJetButton onHoldChange={handleSecondaryHoldChange} offsetX={twinOffsetX} variant="ghost" />
+      )}
       {needsPermission && (
         <View style={styles.permissionOverlay} pointerEvents="box-none">
           <Pressable style={styles.permissionButton} onPress={requestPermission}>
@@ -372,6 +460,62 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+/**
+ * Phase 3's moving-target mechanic. No-op (returns false) when the level has no buttonMotion, so
+ * Phase 1/2 levels are unaffected.
+ *
+ * 'drift' sways buttonOffsetRef continuously via a sine wave — smooth and fully predictable.
+ * 'jump'/'twin' don't move the primary button here at all; that only happens on release, handled
+ * in GameCanvas's handleHoldChange (this function only needs to run every frame for drift and for
+ * the twin-button schedule).
+ *
+ * Returns whether Level 9's temporary second button should currently be visible/rendered. Its
+ * position (secondaryOffsetRef) is set once at the moment it appears — opposite whichever side the
+ * primary button is currently on — and held fixed until it hides, even if the primary jumps to a
+ * new spot while the ghost is up, so the ghost doesn't visibly relocate mid-appearance.
+ */
+function updateButtonMotion(
+  level: LevelConfig,
+  now: number,
+  buttonOffsetRef: React.MutableRefObject<number>,
+  secondaryOffsetRef: React.MutableRefObject<number>,
+  secondaryActiveRef: React.MutableRefObject<boolean>,
+  twinVisibleRef: React.MutableRefObject<boolean>,
+  twinNextAtRef: React.MutableRefObject<number>,
+  twinHideAtRef: React.MutableRefObject<number>
+): boolean {
+  if (level.buttonMotion === 'drift') {
+    buttonOffsetRef.current = Math.sin((now / DRIFT_PERIOD_MS) * 2 * Math.PI) * BUTTON_RANGE_X;
+  }
+
+  if (level.buttonMotion !== 'twin') return false;
+
+  if (!twinVisibleRef.current && now >= twinNextAtRef.current) {
+    secondaryOffsetRef.current = -Math.sign(buttonOffsetRef.current || 1) * BUTTON_RANGE_X;
+    twinHideAtRef.current = now + TWIN_VISIBLE_MS;
+    twinVisibleRef.current = true;
+  } else if (twinVisibleRef.current && now >= twinHideAtRef.current) {
+    twinVisibleRef.current = false;
+    secondaryActiveRef.current = false; // held mid-hide: stop its jet cleanly rather than leaving it stuck on
+    twinNextAtRef.current = now + TWIN_APPEAR_INTERVAL_MS;
+  }
+
+  return twinVisibleRef.current;
+}
+
+/**
+ * Picks a new random button offset for Phase 3 Levels 8-9's "jump" behavior, rejecting draws too
+ * close to the current position so every jump reads as a real re-aim rather than an imperceptible
+ * nudge.
+ */
+function pickJumpOffset(current: number): number {
+  let next = current;
+  while (Math.abs(next - current) < BUTTON_RANGE_X * JUMP_MIN_DISTANCE_FRACTION) {
+    next = (Math.random() * 2 - 1) * BUTTON_RANGE_X;
+  }
+  return next;
+}
 
 /**
  * Finds the single ball body currently "settled" in each target — resting near the bottom of the

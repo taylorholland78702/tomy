@@ -23,6 +23,7 @@ export interface PhaseConfig {
 export const PHASES: PhaseConfig[] = [
   { id: 1, name: 'Foundations' },
   { id: 2, name: 'The Clock' },
+  { id: 3, name: 'Moving Target' },
 ];
 
 export interface LevelConfig {
@@ -47,6 +48,13 @@ export interface LevelConfig {
   tickAudio?: boolean;
   /** Enables age-based shrinking (see FIZZY_MIN_SCALE in GameCanvas.tsx) — late hits get harder. */
   ballFizzy?: boolean;
+  /**
+   * Phase 3's "moving target" mechanic: 'drift' slowly sways the Air Jet button left-right,
+   * 'jump' teleports it to a new spot after every release, 'twin' keeps 'jump' behavior on the
+   * primary button and adds a second temporary button on the opposite side. Undefined = button
+   * stays centered, i.e. every Phase 1/2 level, unchanged from the original design.
+   */
+  buttonMotion?: 'drift' | 'jump' | 'twin';
 }
 
 const BALL_PALETTE = [
@@ -157,5 +165,41 @@ export const LEVELS: LevelConfig[] = [
     ballCount: 9,
     ballColors: BALL_PALETTE,
     ballLifespanMs: 30000,
+  },
+  {
+    id: 'level-7',
+    phase: 3,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Drifting Aim',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    buttonMotion: 'drift',
+  },
+  {
+    id: 'level-8',
+    phase: 3,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Jumping Aim',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    buttonMotion: 'jump',
+  },
+  {
+    id: 'level-9',
+    phase: 3,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Double Trouble',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    buttonMotion: 'twin',
   },
 ];

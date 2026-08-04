@@ -5,6 +5,13 @@ import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
 interface Props {
   onHoldChange: (active: boolean) => void;
+  /** Horizontal shift from center, in px — Phase 3's moving-target mechanic. Defaults to centered. */
+  offsetX?: number;
+  /**
+   * 'ghost' styles this as Phase 3 Level 3's temporary second button (a subtle amber ring) so it
+   * reads as "act now, this won't stay" next to the permanent primary button.
+   */
+  variant?: 'primary' | 'ghost';
 }
 
 const BUTTON_SIZE = 57;
@@ -21,7 +28,7 @@ const SOCKET_BOTTOM_OFFSET = 50;
  * button: a glossy raised dome sitting in a recessed dark socket, pressing down and flattening
  * its shadow when held. Heavy tap on press, soft ticks while held.
  */
-export function AirJetButton({ onHoldChange }: Props) {
+export function AirJetButton({ onHoldChange, offsetX = 0, variant = 'primary' }: Props) {
   const pressAnim = useRef(new Animated.Value(0)).current; // 0 = raised, 1 = pressed in
   const holdInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -45,7 +52,13 @@ export function AirJetButton({ onHoldChange }: Props) {
   const translateY = pressAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 3] });
 
   return (
-    <Animated.View style={styles.socket}>
+    <Animated.View
+      style={[
+        styles.socket,
+        variant === 'ghost' && styles.socketGhost,
+        { transform: [{ translateX: offsetX }] },
+      ]}
+    >
       <Animated.View style={[styles.buttonWrap, { transform: [{ scale }, { translateY }] }]}>
         <Pressable onPressIn={startPress} onPressOut={endPress}>
           <LinearGradient colors={['#FFFFFF', '#F1F3F5', '#D6DBE0']} locations={[0, 0.6, 1]} style={styles.buttonFace}>
@@ -69,6 +82,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4)',
+  },
+  socketGhost: {
+    borderWidth: 2,
+    borderColor: 'rgba(255,210,59,0.75)',
+    boxShadow: 'inset 0px 3px 6px rgba(0,0,0,0.4), 0px 0px 12px rgba(255,210,59,0.5)',
   },
   buttonWrap: {
     width: BUTTON_SIZE,
