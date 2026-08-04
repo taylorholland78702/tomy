@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 18,
     left: 0,
-    right: 90,
+    right: 0,
     alignItems: 'center',
   },
   hudPhaseText: {
@@ -134,8 +134,8 @@ const styles = StyleSheet.create({
   },
   restartButton: {
     position: 'absolute',
-    top: 20,
-    right: 16,
+    bottom: 68,
+    right: 28,
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.4)',

@@ -19,6 +19,14 @@ const EARTH_GRAVITY_MS2 = 9.81;
  */
 const FLAT_MAGNITUDE_THRESHOLD = 0.15;
 
+/**
+ * Module-level, not component state: GameCanvas fully remounts on every level change (see its
+ * `key` prop in LevelManager), which would otherwise reset `permissionGranted` to false and
+ * force the "Enable Tilt Controls" tap again on every single level even though iOS Safari's
+ * underlying motion-permission grant is already in effect for the rest of the page's lifetime.
+ */
+let sharedPermissionGranted = false;
+
 export interface TiltGravityControls {
   /** True once we know tilt needs an explicit user tap to unlock (iOS Safari's motion-permission gate). */
   needsPermission: boolean;
@@ -43,7 +51,7 @@ function getDeviceMotionEventCtor(): any {
 export function useTiltGravity(engine: Matter.Engine | null): TiltGravityControls {
   const smoothed = useRef({ x: 0, y: 1 });
   const [needsPermission, setNeedsPermission] = useState(false);
-  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(sharedPermissionGranted);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -58,6 +66,7 @@ export function useTiltGravity(engine: Matter.Engine | null): TiltGravityControl
     try {
       const result = await DeviceMotionEventCtor.requestPermission();
       if (result === 'granted') {
+        sharedPermissionGranted = true;
         setPermissionGranted(true);
         setNeedsPermission(false);
       }

@@ -128,6 +128,6 @@ export const LEVELS: LevelConfig[] = [
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 7000,
+    ballLifespanMs: 14000,
   },
 ];

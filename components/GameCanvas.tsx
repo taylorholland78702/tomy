@@ -340,21 +340,23 @@ export function GameCanvas({ level, onComplete }: Props) {
 const styles = StyleSheet.create({
   permissionOverlay: {
     position: 'absolute',
-    top: 60,
-    alignSelf: 'center',
+    bottom: 64,
+    left: 20,
+    maxWidth: 110,
   },
   permissionButton: {
     backgroundColor: 'rgba(0,0,0,0.65)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.7)',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
   },
   permissionButtonText: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
 
