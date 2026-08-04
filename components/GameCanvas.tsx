@@ -25,6 +25,7 @@ import {
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete } from '../utils/haptics';
+import { playCountdownTick } from '../utils/audio';
 
 /**
  * SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS).
@@ -107,6 +108,11 @@ const CUP_RETENTION_STRENGTH = 0.00025;
  * "attracting" or "sticking to" balls that hadn't landed in it at all.
  */
 const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.15;
+/** Phase 2 Level 3's "fizzy" balls shrink to this fraction of their original size by end of life. */
+const FIZZY_MIN_SCALE = 0.55;
+/** Countdown tick cadence range (ms) — calm at full life, urgent as a ball nears expiry. */
+const TICK_INTERVAL_CALM_MS = 900;
+const TICK_INTERVAL_URGENT_MS = 200;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -120,6 +126,10 @@ export function GameCanvas({ level, onComplete }: Props) {
   const cupAnchorsRef = useRef<CupAnchor[]>([]);
   /** Phase 2's ball-lifecycle mechanic: body id -> accumulated ms spent "unsafe" (not settled in a cup). */
   const ballAgeRef = useRef<Map<number, number>>(new Map());
+  /** Phase 2 Level 3's fizzy shrink: body id -> current scale factor relative to its original size. */
+  const ballScaleRef = useRef<Map<number, number>>(new Map());
+  /** Phase 2 Levels 2-3's countdown tick: timestamp the next tick is allowed to play. */
+  const nextTickAtRef = useRef(0);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -174,6 +184,8 @@ export function GameCanvas({ level, onComplete }: Props) {
     filledRef.current = new Set();
     wonRef.current = false;
     ballAgeRef.current = new Map();
+    ballScaleRef.current = new Map();
+    nextTickAtRef.current = 0;
 
     let lastTime = Date.now();
     const loop = () => {
@@ -215,7 +227,8 @@ export function GameCanvas({ level, onComplete }: Props) {
       });
       if (filledChanged) setFilledIds(Array.from(filledRef.current));
 
-      ageBalls(pw, level, settledBalls, ballAgeRef.current, delta);
+      updateBallLifecycle(pw, level, settledBalls, ballAgeRef.current, ballScaleRef.current, delta);
+      updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
@@ -392,12 +405,20 @@ function computeSettledBalls(pw: PhysicsWorld, level: LevelConfig, width: number
  * "splash"). A settled ball's timer pauses, not resets, at its current value, so a ball nudged
  * out of a cup later resumes from where it left off rather than getting a fresh full life.
  * No-op when the level has no ballLifespanMs, so Phase 1 levels are unaffected.
+ *
+ * When level.ballFizzy is set (Phase 2 Level 3), a ball also shrinks toward FIZZY_MIN_SCALE as
+ * its age approaches the lifespan, driven by the same age value — frozen while settled, same as
+ * the countdown ring. Matter.Body.scale updates the body's circleRadius directly, so rendering
+ * (which reads circleRadius) picks up the shrink automatically with no render-side changes.
+ * Body.scale is relative, not absolute, so ballScale tracks each ball's current factor to compute
+ * the right per-frame ratio toward the deterministic age-derived target.
  */
-function ageBalls(
+function updateBallLifecycle(
   pw: PhysicsWorld,
   level: LevelConfig,
   settledBalls: Map<string, Matter.Body>,
   ballAge: Map<number, number>,
+  ballScale: Map<number, number>,
   delta: number
 ) {
   if (!level.ballLifespanMs) return;
@@ -412,10 +433,58 @@ function ageBalls(
       const { x, y } = ball.position;
       Matter.World.remove(pw.world, ball);
       ballAge.delete(ball.id);
+      ballScale.delete(ball.id);
       for (let i = 0; i < 5; i++) spawnBubble(pw.world, x, y);
-    } else {
-      ballAge.set(ball.id, age);
+      continue;
     }
+
+    ballAge.set(ball.id, age);
+
+    if (level.ballFizzy) {
+      const targetScale = 1 - (age / level.ballLifespanMs) * (1 - FIZZY_MIN_SCALE);
+      const currentScale = ballScale.get(ball.id) ?? 1;
+      if (targetScale !== currentScale) {
+        const ratio = targetScale / currentScale;
+        Matter.Body.scale(ball, ratio, ratio);
+        ballScale.set(ball.id, targetScale);
+      }
+    }
+  }
+}
+
+/**
+ * Phase 2 Levels 2-3's countdown tick: a short beep (see playCountdownTick in utils/audio.ts)
+ * that plays on a schedule tied to whichever aging ball is closest to sinking, speeding up as
+ * urgency rises. No-ops when the level has no tickAudio, or when every ball is currently settled
+ * (safe) — nothing to feel urgent about once everything has landed.
+ */
+function updateCountdownTick(
+  pw: PhysicsWorld,
+  level: LevelConfig,
+  settledBalls: Map<string, Matter.Body>,
+  ballAge: Map<number, number>,
+  nextTickAtRef: React.MutableRefObject<number>,
+  now: number
+) {
+  if (!level.tickAudio || !level.ballLifespanMs) return;
+
+  const settledBallIds = new Set(Array.from(settledBalls.values()).map((b) => b.id));
+  const ballBodies = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
+
+  let minFraction = 1;
+  for (const ball of ballBodies) {
+    if (settledBallIds.has(ball.id)) continue;
+    const age = ballAge.get(ball.id) ?? 0;
+    const fraction = 1 - age / level.ballLifespanMs;
+    if (fraction < minFraction) minFraction = fraction;
+  }
+
+  if (minFraction >= 1) return; // nothing currently aging
+
+  if (now >= nextTickAtRef.current) {
+    const urgency = 1 - minFraction;
+    playCountdownTick(urgency);
+    nextTickAtRef.current = now + (TICK_INTERVAL_CALM_MS - urgency * (TICK_INTERVAL_CALM_MS - TICK_INTERVAL_URGENT_MS));
   }
 }
 

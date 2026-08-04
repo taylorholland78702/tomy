@@ -43,6 +43,10 @@ export interface LevelConfig {
    * Phase 1 level, unchanged from the original design.
    */
   ballLifespanMs?: number;
+  /** Enables the countdown tick sound (see utils/audio.ts), speeding up as a ball nears expiry. */
+  tickAudio?: boolean;
+  /** Enables age-based shrinking (see FIZZY_MIN_SCALE in GameCanvas.tsx) — late hits get harder. */
+  ballFizzy?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -128,6 +132,33 @@ export const LEVELS: LevelConfig[] = [
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 14000,
+    ballLifespanMs: 15000,
+  },
+  {
+    id: 'level-5',
+    phase: 2,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Ticking Clock',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    ballLifespanMs: 15000,
+    tickAudio: true,
+  },
+  {
+    id: 'level-6',
+    phase: 2,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Fizzy Balls',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    ballLifespanMs: 15000,
+    tickAudio: true,
+    ballFizzy: true,
   },
 ];
