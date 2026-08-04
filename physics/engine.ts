@@ -154,6 +154,25 @@ export function createCup(world: Matter.World, x: number, y: number, id: string)
   return { segments, restY: y + (CUP_RADIUS - BALL_RADIUS) };
 }
 
+/** Phase 8: rigidly translates every wall segment of a cup by the same incremental delta — used for the sway mechanic. */
+export function translateCup(segments: Matter.Body[], deltaX: number, deltaY: number = 0) {
+  for (const seg of segments) Matter.Body.translate(seg, { x: deltaX, y: deltaY });
+}
+
+/**
+ * Phase 8: rigidly rotates every wall segment of a cup around a shared pivot by an incremental
+ * delta (like translateCup, not an absolute angle) — used for the tilt mechanic. The pivot should
+ * be the cup's own circle center (the (x, y) originally passed to createCup), so all segments
+ * revolve together as one tilted bowl rather than spinning individually in place.
+ */
+export function rotateCup(segments: Matter.Body[], deltaRad: number, pivot: { x: number; y: number }) {
+  // @types/matter-js's Body.rotate signature is missing the (fully supported at runtime, per
+  // matter-js's own source) third `point` argument that rotates position as well as angle — cast
+  // to bypass the stale type declaration rather than reimplementing rotate-about-a-point by hand.
+  const rotate = Matter.Body.rotate as (body: Matter.Body, rotation: number, point: { x: number; y: number }) => void;
+  for (const seg of segments) rotate(seg, deltaRad, pivot);
+}
+
 export interface CupAnchor {
   x: number;
   restY: number;

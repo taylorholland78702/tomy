@@ -9,6 +9,8 @@ import {
   createVRamp,
   createPeg,
   createCup,
+  translateCup,
+  rotateCup,
   computeRampPoints,
   applyWaterPhysics,
   applyRampGuide,
@@ -38,6 +40,14 @@ import { playCountdownTick, playBonusChime } from '../utils/audio';
  */
 function cupPath(x: number, y: number) {
   return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 0 ${x + CUP_RADIUS} ${y}`;
+}
+
+/** Phase 8's cup motion: a cup's current absolute position/tilt, plus how much dx/tilt has already been physically applied to its walls so far (kept delta-based so translateCup/rotateCup calls compose correctly, mirroring rampRiseAppliedRef's pattern). */
+interface CupMotionState {
+  x: number;
+  y: number;
+  tiltDeg: number;
+  appliedDx: number;
 }
 
 /** Lightens (positive percent) or darkens (negative) a "#rrggbb" color for gradient shading. */
@@ -177,6 +187,19 @@ const CHARGE_BURST_STRENGTH = JET_STRENGTH * 2.5;
 const SPLIT_OFFSET_X = 70;
 /** Phase 7 Levels 20-21's combined-press center burst: stronger than a normal single-side push. */
 const CENTER_BURST_STRENGTH = JET_STRENGTH * 1.8;
+/** Phase 8's cup sway: how far a cup drifts from its base x, px, and one full cycle's duration. */
+const CUP_SWAY_RANGE_X = 16;
+const CUP_SWAY_PERIOD_MS = 6000;
+/** Per-cup stagger so multiple swaying cups on the same level don't move in lockstep. */
+const CUP_SWAY_PHASE_STAGGER_MS = 1100;
+/** Phase 8's cup tilt: max rotation at the peak of a close, one full open->close->open cycle, and how much of that cycle is spent closing. */
+const CUP_TILT_MAX_DEG = 38;
+const CUP_TILT_CYCLE_MS = 4500;
+const CUP_TILT_CLOSE_MS = 1400;
+/** Per-cup stagger for tilt, distinct from sway's so a level combining both doesn't look mechanical. */
+const CUP_TILT_PHASE_STAGGER_MS = 900;
+/** Past this tilt, a cup can't hold or newly catch a ball this frame — see resolveCupTarget. */
+const CUP_SETTLE_TILT_LIMIT_DEG = 15;
 
 export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
@@ -227,6 +250,10 @@ export function GameCanvas({ level, onComplete }: Props) {
   /** Phase 7 Level 21's swipe-to-angle: current drag-biased x offset for each split button's jet. */
   const leftSwipeAngleRef = useRef(0);
   const rightSwipeAngleRef = useRef(0);
+  /** Phase 8's cup motion: target id -> its physical wall segments, for translate/rotate. */
+  const cupWallsRef = useRef<Map<string, Matter.Body[]>>(new Map());
+  /** Phase 8's cup motion: target id -> its current absolute position/tilt and how much of each has already been applied to the physical walls so far (kept delta-based like rampRiseAppliedRef). */
+  const cupMotionRef = useRef<Map<string, CupMotionState>>(new Map());
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -236,6 +263,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [rainbowTargetId, setRainbowTargetId] = useState<string | null>(null);
   const [rampRise, setRampRise] = useState(0);
   const [charging, setCharging] = useState(false);
+  const [cupMotionSnapshot, setCupMotionSnapshot] = useState<Record<string, CupMotionState>>({});
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -254,8 +282,17 @@ export function GameCanvas({ level, onComplete }: Props) {
     jetXRef.current = rampInfo.lowPoint.x;
     jetYRef.current = rampInfo.lowPoint.y;
 
+    cupWallsRef.current.clear();
+    cupMotionRef.current.clear();
     cupAnchorsRef.current = level.targets.map((target) => {
       const cup = createCup(pw.world, width / 2 + target.dx, target.y, target.id);
+      cupWallsRef.current.set(target.id, cup.segments);
+      cupMotionRef.current.set(target.id, {
+        x: width / 2 + target.dx,
+        y: target.y,
+        tiltDeg: 0,
+        appliedDx: 0,
+      });
       return { x: width / 2 + target.dx, restY: cup.restY };
     });
 
@@ -327,6 +364,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     setRainbowTargetId(null);
     setRampRise(0);
     setCharging(false);
+    setCupMotionSnapshot({});
 
     let lastTime = Date.now();
     const loop = () => {
@@ -363,6 +401,18 @@ export function GameCanvas({ level, onComplete }: Props) {
         }
       }
       const currentRampBaseY = rampBaseY - rampRiseAppliedRef.current;
+
+      // Phase 8's cup motion: no-ops immediately when level.cupMotion is unset, so this is inert
+      // by construction for every earlier phase — see updateCupMotion's own doc comment.
+      updateCupMotion(level, now, width, cupWallsRef, cupMotionRef);
+      if (level.cupMotion) {
+        // Keep retention anchors following the moving cup, not its static level.targets position —
+        // otherwise the spring would fight the sway/tilt instead of tracking it.
+        level.targets.forEach((t, i) => {
+          const state = cupMotionRef.current.get(t.id);
+          if (state) cupAnchorsRef.current[i] = { x: state.x, restY: cupAnchorsRef.current[i].restY };
+        });
+      }
 
       applyWaterPhysics(Matter.Composite.allBodies(pw.world));
       if (level.magnetCount && !magnetSettledRef.current) {
@@ -461,7 +511,7 @@ export function GameCanvas({ level, onComplete }: Props) {
 
       Matter.Engine.update(pw.engine, delta);
 
-      const settledBalls = computeSettledBalls(pw, level, width);
+      const settledBalls = computeSettledBalls(pw, level, width, cupMotionRef);
       const { changed: filledChanged, newlyFilled } = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
         setTimeout(onComplete, 1200);
@@ -488,7 +538,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       );
 
       if (level.sinkerCount) {
-        const settledSinkers = computeSettledSinkers(pw, level, width);
+        const settledSinkers = computeSettledSinkers(pw, level, width, cupMotionRef);
         const anySinkerSettled = settledSinkers.size > 0;
         if (anySinkerSettled && !sinkerInCupRef.current) {
           hapticSinkerWarning();
@@ -510,6 +560,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       setComboCount(comboCountRef.current);
       setRainbowTargetId(rainbowVisibleId);
       setRampRise(rampRiseAppliedRef.current);
+      if (level.cupMotion) setCupMotionSnapshot(Object.fromEntries(cupMotionRef.current));
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
@@ -647,12 +698,34 @@ export function GameCanvas({ level, onComplete }: Props) {
         ))}
         {level.targets.map((t) => {
           const isRainbow = t.id === rainbowTargetId;
+          const dyn = level.cupMotion ? cupMotionSnapshot[t.id] : undefined;
+          const cx = dyn?.x ?? width / 2 + t.dx;
+          const cy = dyn?.y ?? t.y;
+          const tiltDeg = dyn?.tiltDeg ?? 0;
+          const closed = Math.abs(tiltDeg) > CUP_SETTLE_TILT_LIMIT_DEG;
           return (
             <Path
               key={t.id}
-              d={cupPath(width / 2 + t.dx, t.y)}
-              fill={isRainbow ? 'rgba(255,255,255,0.3)' : filledIds.includes(t.id) ? 'rgba(255,210,59,0.35)' : 'rgba(255,255,255,0.15)'}
-              stroke={isRainbow ? 'url(#rainbowGradient)' : filledIds.includes(t.id) ? '#FFD23B' : 'rgba(255,255,255,0.65)'}
+              d={cupPath(cx, cy)}
+              transform={tiltDeg ? `rotate(${tiltDeg} ${cx} ${cy})` : undefined}
+              fill={
+                isRainbow
+                  ? 'rgba(255,255,255,0.3)'
+                  : closed
+                  ? 'rgba(255,80,80,0.2)'
+                  : filledIds.includes(t.id)
+                  ? 'rgba(255,210,59,0.35)'
+                  : 'rgba(255,255,255,0.15)'
+              }
+              stroke={
+                isRainbow
+                  ? 'url(#rainbowGradient)'
+                  : closed
+                  ? 'rgba(255,120,120,0.8)'
+                  : filledIds.includes(t.id)
+                  ? '#FFD23B'
+                  : 'rgba(255,255,255,0.65)'
+              }
               strokeWidth={isRainbow ? 6 : 5}
               strokeLinecap="round"
             />
@@ -802,6 +875,66 @@ function updateButtonMotion(
 }
 
 /**
+ * Triangular wave for Phase 8's tilt mechanic: a cup sits open (0deg) for most of
+ * CUP_TILT_CYCLE_MS, then ramps 0->CUP_TILT_MAX_DEG->0 over the final CUP_TILT_CLOSE_MS of the
+ * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble.
+ */
+function computeCupTiltDeg(now: number): number {
+  const t = now % CUP_TILT_CYCLE_MS;
+  const openMs = CUP_TILT_CYCLE_MS - CUP_TILT_CLOSE_MS;
+  if (t < openMs) return 0;
+  const closeT = t - openMs;
+  const half = CUP_TILT_CLOSE_MS / 2;
+  const frac = closeT < half ? closeT / half : (CUP_TILT_CLOSE_MS - closeT) / half;
+  return frac * CUP_TILT_MAX_DEG;
+}
+
+/**
+ * Phase 8's cup motion: no-ops immediately when level.cupMotion is unset, so it never touches
+ * cupWallsRef's bodies or cupMotionRef's state for any Phase 1-7 level. Otherwise, for each target
+ * (staggered by its index in level.targets so multiple cups don't move in lockstep), computes a
+ * desired sway offset and/or tilt angle, diffs against what's already been applied to get an
+ * incremental delta (mirrors the rising-floor's rampRiseAppliedRef pattern), and physically
+ * translates/rotates the real cup-wall Matter bodies by that delta — this is a genuine physical
+ * move, not a visual-only trick, so a ball resting against a tilting wall actually gets displaced.
+ */
+function updateCupMotion(
+  level: LevelConfig,
+  now: number,
+  width: number,
+  cupWallsRef: React.MutableRefObject<Map<string, Matter.Body[]>>,
+  cupMotionRef: React.MutableRefObject<Map<string, CupMotionState>>
+) {
+  if (!level.cupMotion) return;
+  const swayActive = level.cupMotion === 'sway' || level.cupMotion === 'full';
+  const tiltActive = level.cupMotion === 'tilt' || level.cupMotion === 'full';
+
+  (level.targets as TargetConfig[]).forEach((t, i) => {
+    const state = cupMotionRef.current.get(t.id);
+    if (!state) return;
+    const baseX = width / 2 + t.dx;
+
+    const desiredDx = swayActive
+      ? Math.sin(((now + i * CUP_SWAY_PHASE_STAGGER_MS) / CUP_SWAY_PERIOD_MS) * 2 * Math.PI) * CUP_SWAY_RANGE_X
+      : 0;
+    const desiredTiltDeg = tiltActive ? computeCupTiltDeg(now + i * CUP_TILT_PHASE_STAGGER_MS) : 0;
+
+    const dxDelta = desiredDx - state.appliedDx;
+    const tiltDeltaRad = (desiredTiltDeg - state.tiltDeg) * (Math.PI / 180);
+    const walls = cupWallsRef.current.get(t.id);
+    if (walls) {
+      if (dxDelta !== 0) translateCup(walls, dxDelta, 0);
+      if (tiltDeltaRad !== 0) rotateCup(walls, tiltDeltaRad, { x: baseX + desiredDx, y: t.y });
+    }
+
+    state.x = baseX + desiredDx;
+    state.y = t.y;
+    state.tiltDeg = desiredTiltDeg;
+    state.appliedDx = desiredDx;
+  });
+}
+
+/**
  * Picks a new random button offset for Phase 3 Levels 8-9's "jump" behavior, rejecting draws too
  * close to the current position so every jump reads as a real re-aim rather than an imperceptible
  * nudge.
@@ -815,18 +948,44 @@ function pickJumpOffset(current: number): number {
 }
 
 /**
+ * Resolves a target's current x/restY (dynamic, from cupMotionRef, when Phase 8's cupMotion is
+ * active; otherwise the static level.targets position, byte-identical to every pre-Phase-8 level)
+ * and whether it's currently "closed" — tilted past CUP_SETTLE_TILT_LIMIT_DEG, so it can't hold or
+ * newly catch a ball this frame. Shared by computeSettledBalls/computeSettledSinkers so both agree
+ * on exactly where a cup is right now rather than duplicating the cupMotion lookup.
+ */
+function resolveCupTarget(
+  target: TargetConfig,
+  level: LevelConfig,
+  width: number,
+  cupMotionRef: React.MutableRefObject<Map<string, CupMotionState>> | null
+): { targetX: number; restY: number; closed: boolean } {
+  const dyn = level.cupMotion ? cupMotionRef?.current.get(target.id) : undefined;
+  return {
+    targetX: dyn?.x ?? width / 2 + target.dx,
+    restY: target.y + (CUP_RADIUS - BALL_RADIUS),
+    closed: dyn !== undefined && Math.abs(dyn.tiltDeg) > CUP_SETTLE_TILT_LIMIT_DEG,
+  };
+}
+
+/**
  * Finds the single ball body currently "settled" in each target — resting near the bottom of the
  * semicircular arc (see createCup's restY), moving slowly. Shared by checkTargets (win condition)
  * and the Phase 2 ball-lifecycle timer (a settled ball is "safe" and stops aging), so both agree
  * on exactly which ball counts as landed rather than duplicating the settle math.
  */
-function computeSettledBalls(pw: PhysicsWorld, level: LevelConfig, width: number): Map<string, Matter.Body> {
+function computeSettledBalls(
+  pw: PhysicsWorld,
+  level: LevelConfig,
+  width: number,
+  cupMotionRef: React.MutableRefObject<Map<string, CupMotionState>> | null = null
+): Map<string, Matter.Body> {
   const balls = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
   const result = new Map<string, Matter.Body>();
 
   for (const target of level.targets as TargetConfig[]) {
-    const targetX = width / 2 + target.dx;
-    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
+    const { targetX, restY, closed } = resolveCupTarget(target, level, width, cupMotionRef);
+    if (closed) continue;
 
     const ball = balls.find((b) => {
       const deltaX = b.position.x - targetX;
@@ -847,13 +1006,18 @@ function computeSettledBalls(pw: PhysicsWorld, level: LevelConfig, width: number
  * function that every other mechanic already depends on. Used only for the warning haptic —
  * never for win-condition purposes, since a sinker should never count as filling a cup.
  */
-function computeSettledSinkers(pw: PhysicsWorld, level: LevelConfig, width: number): Map<string, Matter.Body> {
+function computeSettledSinkers(
+  pw: PhysicsWorld,
+  level: LevelConfig,
+  width: number,
+  cupMotionRef: React.MutableRefObject<Map<string, CupMotionState>> | null = null
+): Map<string, Matter.Body> {
   const sinkers = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('sinker-'));
   const result = new Map<string, Matter.Body>();
 
   for (const target of level.targets as TargetConfig[]) {
-    const targetX = width / 2 + target.dx;
-    const restY = target.y + (CUP_RADIUS - BALL_RADIUS);
+    const { targetX, restY, closed } = resolveCupTarget(target, level, width, cupMotionRef);
+    if (closed) continue;
 
     const sinker = sinkers.find((b) => {
       const deltaX = b.position.x - targetX;

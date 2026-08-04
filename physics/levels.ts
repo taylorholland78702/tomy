@@ -28,6 +28,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 5, name: 'Undertow' },
   { id: 6, name: 'Bonus Tokens' },
   { id: 7, name: 'Split Stream' },
+  { id: 8, name: 'Full Tilt' },
 ];
 
 export interface LevelConfig {
@@ -101,6 +102,15 @@ export interface LevelConfig {
    * both buttons are held together; 'swipe' keeps both and adds drag-to-angle on each button.
    */
   splitButtons?: 'basic' | 'centerBurst' | 'swipe';
+  /**
+   * Phase 8's "full tilt" mechanic: one evolving control scheme (like buttonMotion/splitButtons) —
+   * 'sway' gently drifts every cup side-to-side, out of phase with each other; 'tilt' keeps cups
+   * still but periodically rotates each one shut on its own cycle (independent per cup), so a ball
+   * can't land while it's closed past a threshold tilt and an already-settled ball gets physically
+   * displaced as the wall rotates; 'full' runs both sway and tilt simultaneously. Undefined = cups
+   * stay perfectly still, i.e. every Phase 1-7 level, unchanged from the original design.
+   */
+  cupMotion?: 'sway' | 'tilt' | 'full';
 }
 
 const BALL_PALETTE = [
@@ -419,5 +429,48 @@ export const LEVELS: LevelConfig[] = [
     ballCount: 9,
     ballColors: BALL_PALETTE,
     splitButtons: 'swipe',
+  },
+  {
+    id: 'level-22',
+    phase: 8,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Gentle Sway',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    cupMotion: 'sway',
+  },
+  {
+    id: 'level-23',
+    phase: 8,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Closing Time',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    cupMotion: 'tilt',
+  },
+  {
+    id: 'level-24',
+    phase: 8,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Full Tilt',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    // 9 cups + 1 sinker (which never counts toward filling a cup) needs 10 balls total, not 9 —
+    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
+    // BALL_PALETTE only has 9 entries, so append one more repeated color for the 10th ball.
+    ballCount: 10,
+    ballColors: [...BALL_PALETTE, BALL_PALETTE[0]],
+    // Combines both of Phase 8's own mechanics with Phase 5's current + sinker hazards, per the
+    // phase's own "everything at once" mastery-checkpoint design (mirrors level-15's Full Undertow).
+    cupMotion: 'full',
+    sideCurrent: true,
+    sinkerCount: 1,
   },
 ];
