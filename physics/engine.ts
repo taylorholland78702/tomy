@@ -238,13 +238,13 @@ export function applyRampGuide(bodies: Matter.Body[], rampLowX: number, rampBase
  * bottom, so a held press can gradually jiggle — and occasionally knock loose — an off-center
  * ball, while a dead-center resting ball still gets zero force once verticalRange is exceeded.
  *
- * On top of the lift, adds a tangential (rotational) force around a fixed point mid-way up the
- * jet's range, so motion curls into a swirl/convection loop rather than traveling straight up —
- * matching how water actually circulates in a real Waterfuls toy instead of shooting like a hose.
- * The rotation itself (relY, relX) always has the same fixed handedness, so without
- * `swirlDirection` the water would swirl the same way — e.g. always left first — on every single
- * press. Callers should randomize swirlDirection (+1 or -1) once per press, not per frame, so a
- * given hold reads as one coherent loop rather than jittering between directions.
+ * On top of the lift, adds an outward (not rotational) push whose strength grows with height, so
+ * a ball already drifted slightly off-center gets nudged further from the centerline the higher
+ * it rises — trajectories fan out into a widening V/cone as they climb, matching a real spray,
+ * rather than curling around a fixed point like a whirlpool. A ball still exactly on the
+ * centerline (dx=0) gets no outward push either way; only turbulence's natural jitter decides
+ * which side of the V it ends up drifting into, so which side any given press favors is organic
+ * rather than a single global "spin direction" applied to every ball at once.
  */
 export function applyAirJet(
   world: Matter.World,
@@ -254,11 +254,9 @@ export function applyAirJet(
   baseColumnHalfWidth: number,
   verticalRange: number,
   fanRate: number,
-  swirlStrength: number,
-  swirlDirection: number
+  spreadStrength: number
 ) {
   const bodies = Matter.Composite.allBodies(world);
-  const swirlCenterY = jetY - verticalRange * 0.5;
 
   for (const body of bodies) {
     if (body.isStatic) continue;
@@ -276,15 +274,13 @@ export function applyAirJet(
     const falloff = horizontalFalloff * verticalFalloff;
     if (falloff <= 0) continue;
 
-    const relX = body.position.x - jetX;
-    const relY = body.position.y - swirlCenterY;
-    const dist = Math.hypot(relX, relY) || 1;
-    const tangentialX = swirlDirection * (-relY / dist) * swirlStrength * falloff;
-    const tangentialY = swirlDirection * (relX / dist) * swirlStrength * falloff;
+    // Grows linearly with height risen, same shape as the column's own widening, so the push
+    // outward tracks the V the column itself traces.
+    const outwardX = Math.sign(dx) * heightRisen * spreadStrength * falloff;
 
     Matter.Body.applyForce(body, body.position, {
-      x: -dx * 0.00002 * falloff + tangentialX,
-      y: -strength * falloff + tangentialY,
+      x: -dx * 0.00002 * falloff + outwardX,
+      y: -strength * falloff,
     });
   }
 }

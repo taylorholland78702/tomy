@@ -76,8 +76,8 @@ const JET_FAN_RATE = 0.14;
  * balls rising from the ramp still reliably reach that height on momentum.
  */
 const JET_VERTICAL_RANGE = 490;
-/** Tangential force around the jet's mid-height point — the "swirl/convection loop" feel. */
-const JET_SWIRL_STRENGTH = 0.0007;
+/** Outward push, scaled by height risen — makes trajectories fan into a widening V as they climb. */
+const JET_SPREAD_STRENGTH = 0.000003;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00145;
@@ -94,7 +94,6 @@ export function GameCanvas({ level, onComplete }: Props) {
   const { width, height } = Dimensions.get('window');
   const physicsRef = useRef<PhysicsWorld | null>(null);
   const jetActiveRef = useRef(false);
-  const swirlDirRef = useRef(1);
   const filledRef = useRef<Set<string>>(new Set());
   const wonRef = useRef(false);
   const rafRef = useRef<number | null>(null);
@@ -180,8 +179,7 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_BASE_COLUMN_HALF_WIDTH,
           JET_VERTICAL_RANGE,
           JET_FAN_RATE,
-          JET_SWIRL_STRENGTH,
-          swirlDirRef.current
+          JET_SPREAD_STRENGTH
         );
         spawnBubble(pw.world, jetXRef.current, height - 80);
       }
@@ -218,11 +216,6 @@ export function GameCanvas({ level, onComplete }: Props) {
   }, [level, width, height, onComplete]);
 
   const handleHoldChange = useCallback((active: boolean) => {
-    if (active && !jetActiveRef.current) {
-      // Randomize once per press (not per frame) so a given hold reads as one coherent swirl
-      // direction instead of jittering — otherwise the water always curled the same way, every time.
-      swirlDirRef.current = Math.random() < 0.5 ? 1 : -1;
-    }
     jetActiveRef.current = active;
   }, []);
 
