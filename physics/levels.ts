@@ -132,7 +132,7 @@ export const LEVELS: LevelConfig[] = [
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 20000,
+    ballLifespanMs: 30000,
   },
   {
     id: 'level-5',
@@ -144,7 +144,7 @@ export const LEVELS: LevelConfig[] = [
     pegs: PEGS_ROW_1,
     ballCount: 6,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 20000,
+    ballLifespanMs: 30000,
   },
   {
     id: 'level-6',
@@ -156,6 +156,6 @@ export const LEVELS: LevelConfig[] = [
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 20000,
+    ballLifespanMs: 30000,
   },
 ];
