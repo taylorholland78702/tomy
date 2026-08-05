@@ -146,6 +146,15 @@ const CUP_RETENTION_STRENGTH = 0.00025;
  */
 const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.15;
 /**
+ * How forgiving "did it land" is: within this x/y window of the cup's exact center, and under this
+ * velocity, a ball counts as settled — widened from an original 0.5x/0.5x/1.2 so a visible
+ * near-miss still catches, without changing the cup's actual size or collision geometry (those stay
+ * on CUP_RADIUS/BALL_RADIUS directly — see createCup in physics/engine.ts and cupPath below).
+ */
+const SETTLE_X_TOLERANCE = CUP_RADIUS * 0.85;
+const SETTLE_Y_TOLERANCE = BALL_RADIUS * 0.85;
+const SETTLE_VELOCITY_THRESHOLD = 1.8;
+/**
  * Forward-tilt eject threshold, checked against engine.gravity.y. useTiltGravity's GRAVITY_SCALE
  * is 1.1 and its own flat-phone default is +1 (not 0), so gravity.y has to swing all the way down
  * through 0 and past -0.5 for this to fire — a large, deliberate motion well clear of normal
@@ -1067,8 +1076,8 @@ function computeSettledBalls(
     const ball = balls.find((b) => {
       const deltaX = b.position.x - targetX;
       const deltaY = b.position.y - restY;
-      const settled = Math.abs(b.velocity.x) < 1.2 && Math.abs(b.velocity.y) < 1.2;
-      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
+      const settled = Math.abs(b.velocity.x) < SETTLE_VELOCITY_THRESHOLD && Math.abs(b.velocity.y) < SETTLE_VELOCITY_THRESHOLD;
+      return Math.abs(deltaX) < SETTLE_X_TOLERANCE && Math.abs(deltaY) < SETTLE_Y_TOLERANCE && settled;
     });
     if (ball) result.set(target.id, ball);
   }
@@ -1099,8 +1108,8 @@ function computeSettledSinkers(
     const sinker = sinkers.find((b) => {
       const deltaX = b.position.x - targetX;
       const deltaY = b.position.y - restY;
-      const settled = Math.abs(b.velocity.x) < 1.2 && Math.abs(b.velocity.y) < 1.2;
-      return Math.abs(deltaX) < CUP_RADIUS * 0.5 && Math.abs(deltaY) < BALL_RADIUS * 0.5 && settled;
+      const settled = Math.abs(b.velocity.x) < SETTLE_VELOCITY_THRESHOLD && Math.abs(b.velocity.y) < SETTLE_VELOCITY_THRESHOLD;
+      return Math.abs(deltaX) < SETTLE_X_TOLERANCE && Math.abs(deltaY) < SETTLE_Y_TOLERANCE && settled;
     });
     if (sinker) result.set(target.id, sinker);
   }
