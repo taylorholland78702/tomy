@@ -30,7 +30,7 @@ import {
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete, hapticSinkerWarning, hapticJetPress } from '../utils/haptics';
-import { playCountdownTick, playBonusChime } from '../utils/audio';
+import { playCountdownTick, playBonusChime, playComboNote } from '../utils/audio';
 
 /**
  * SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS).
@@ -164,6 +164,10 @@ const TWIN_APPEAR_INTERVAL_MS = 4500;
 const TWIN_VISIBLE_MS = 1800;
 /** Phase 4's combo meter: a landing within this many ms of the last one extends the streak. */
 const COMBO_WINDOW_MS = 3000;
+/** Phase 9 Level 27's finale: a screen jitter fires once per this many combo count crossed. */
+const SHAKE_COMBO_STEP = 5;
+const SHAKE_MAGNITUDE_PX = 6;
+const SHAKE_DURATION_MS = 140;
 /** Phase 4 Level 12's rainbow bonus cup: how often it appears, and how long it stays up. */
 const RAINBOW_APPEAR_INTERVAL_MS = 5500;
 const RAINBOW_VISIBLE_MS = 2500;
@@ -254,6 +258,10 @@ export function GameCanvas({ level, onComplete }: Props) {
   const cupWallsRef = useRef<Map<string, Matter.Body[]>>(new Map());
   /** Phase 8's cup motion: target id -> its current absolute position/tilt and how much of each has already been applied to the physical walls so far (kept delta-based like rampRiseAppliedRef). */
   const cupMotionRef = useRef<Map<string, CupMotionState>>(new Map());
+  /** Phase 9 Level 27's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
+  const shakeOffsetRef = useRef({ x: 0, y: 0 });
+  const shakeUntilRef = useRef(0);
+  const comboShakeThresholdRef = useRef(0);
   const [renderBodies, setRenderBodies] = useState<RenderBody[]>([]);
   const [filledIds, setFilledIds] = useState<string[]>([]);
   const [engineVersion, setEngineVersion] = useState(0);
@@ -264,6 +272,7 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [rampRise, setRampRise] = useState(0);
   const [charging, setCharging] = useState(false);
   const [cupMotionSnapshot, setCupMotionSnapshot] = useState<Record<string, CupMotionState>>({});
+  const [shakeOffset, setShakeOffsetState] = useState({ x: 0, y: 0 });
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -357,6 +366,9 @@ export function GameCanvas({ level, onComplete }: Props) {
     magnetSettledRef.current = false;
     leftSwipeAngleRef.current = 0;
     rightSwipeAngleRef.current = 0;
+    shakeOffsetRef.current = { x: 0, y: 0 };
+    shakeUntilRef.current = 0;
+    comboShakeThresholdRef.current = 0;
 
     setButtonOffsetX(0);
     setTwinOffsetX(null);
@@ -365,6 +377,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     setRampRise(0);
     setCharging(false);
     setCupMotionSnapshot({});
+    setShakeOffsetState({ x: 0, y: 0 });
 
     let lastTime = Date.now();
     const loop = () => {
@@ -428,8 +441,10 @@ export function GameCanvas({ level, onComplete }: Props) {
       if (level.sideCurrent) {
         // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
         // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
-        // against one wall over time.
-        const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / CURRENT_PERIOD_MS) * 2 * Math.PI);
+        // against one wall over time. Phase 9's paceMultiplier (default 1) shortens the period —
+        // dividing rather than a separate constant, so it composes with the existing wave shape.
+        const pace = level.paceMultiplier ?? 1;
+        const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / (CURRENT_PERIOD_MS / pace)) * 2 * Math.PI);
         applyCurrent(Matter.Composite.allBodies(pw.world), currentStrength);
       }
       // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
@@ -526,6 +541,13 @@ export function GameCanvas({ level, onComplete }: Props) {
       const spawnBonus = (x: number, y: number) => triggerBonus(pw, level, x, y, rampLowX, rampLowY);
       checkChainMatches(level, settledBalls, matchedRowsRef, width, spawnBonus);
       updateComboMeter(level, newlyFilled, comboCountRef, comboLastLandingAtRef, now);
+      if (level.finaleEffects) {
+        const setShakeOffset = (offset: { x: number; y: number }) => {
+          shakeOffsetRef.current = offset;
+          shakeUntilRef.current = now + SHAKE_DURATION_MS;
+        };
+        triggerFinaleEffects(newlyFilled, comboCountRef.current, comboShakeThresholdRef, setShakeOffset);
+      }
       const rainbowVisibleId = updateRainbowCup(
         level,
         now,
@@ -561,6 +583,13 @@ export function GameCanvas({ level, onComplete }: Props) {
       setRainbowTargetId(rainbowVisibleId);
       setRampRise(rampRiseAppliedRef.current);
       if (level.cupMotion) setCupMotionSnapshot(Object.fromEntries(cupMotionRef.current));
+      if (level.finaleEffects) {
+        // Linear decay back to 0 over SHAKE_DURATION_MS — a plain per-frame ref->setState mirror,
+        // matching rampRise/cupMotionSnapshot's pattern rather than introducing Animated.Value.
+        const remaining = Math.max(0, shakeUntilRef.current - now);
+        const decay = remaining / SHAKE_DURATION_MS;
+        setShakeOffsetState({ x: shakeOffsetRef.current.x * decay, y: shakeOffsetRef.current.y * decay });
+      }
 
       const bodies = Matter.Composite.allBodies(pw.world).filter((b) => !b.isStatic);
       setRenderBodies(
@@ -650,8 +679,13 @@ export function GameCanvas({ level, onComplete }: Props) {
   }, []);
 
   return (
-    <View style={{ flex: 1 }}>
-      <Tank width={width} height={height} />
+    <View
+      style={{
+        flex: 1,
+        transform: level.finaleEffects ? [{ translateX: shakeOffset.x }, { translateY: shakeOffset.y }] : undefined,
+      }}
+    >
+      <Tank width={width} height={height} tintHue={level.finaleEffects ? 200 + Math.min(comboCount, 12) * 12 : undefined} />
       <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
           {/* Always include GOLD_COLOR/MAGNET_COLOR here (not just level.ballColors) — Phase 6's
@@ -877,15 +911,20 @@ function updateButtonMotion(
 /**
  * Triangular wave for Phase 8's tilt mechanic: a cup sits open (0deg) for most of
  * CUP_TILT_CYCLE_MS, then ramps 0->CUP_TILT_MAX_DEG->0 over the final CUP_TILT_CLOSE_MS of the
- * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble.
+ * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble. Phase 9's
+ * paceMultiplier (default 1) shortens both the cycle and close window, for "quicker tilts" — the
+ * per-cup phase stagger passed in via `now` is left un-scaled by the caller so speeding up doesn't
+ * also resync all cups' tilts.
  */
-function computeCupTiltDeg(now: number): number {
-  const t = now % CUP_TILT_CYCLE_MS;
-  const openMs = CUP_TILT_CYCLE_MS - CUP_TILT_CLOSE_MS;
+function computeCupTiltDeg(now: number, pace: number = 1): number {
+  const cycleMs = CUP_TILT_CYCLE_MS / pace;
+  const closeMs = CUP_TILT_CLOSE_MS / pace;
+  const t = now % cycleMs;
+  const openMs = cycleMs - closeMs;
   if (t < openMs) return 0;
   const closeT = t - openMs;
-  const half = CUP_TILT_CLOSE_MS / 2;
-  const frac = closeT < half ? closeT / half : (CUP_TILT_CLOSE_MS - closeT) / half;
+  const half = closeMs / 2;
+  const frac = closeT < half ? closeT / half : (closeMs - closeT) / half;
   return frac * CUP_TILT_MAX_DEG;
 }
 
@@ -917,7 +956,7 @@ function updateCupMotion(
     const desiredDx = swayActive
       ? Math.sin(((now + i * CUP_SWAY_PHASE_STAGGER_MS) / CUP_SWAY_PERIOD_MS) * 2 * Math.PI) * CUP_SWAY_RANGE_X
       : 0;
-    const desiredTiltDeg = tiltActive ? computeCupTiltDeg(now + i * CUP_TILT_PHASE_STAGGER_MS) : 0;
+    const desiredTiltDeg = tiltActive ? computeCupTiltDeg(now + i * CUP_TILT_PHASE_STAGGER_MS, level.paceMultiplier ?? 1) : 0;
 
     const dxDelta = desiredDx - state.appliedDx;
     const tiltDeltaRad = (desiredTiltDeg - state.tiltDeg) * (Math.PI / 180);
@@ -1270,6 +1309,32 @@ function updateComboMeter(
     comboLastLandingAtRef.current = now;
   } else if (comboCountRef.current > 0 && now - comboLastLandingAtRef.current > COMBO_WINDOW_MS) {
     comboCountRef.current = 0;
+  }
+}
+
+/**
+ * Phase 9 Level 27's finale flourishes: reacts to the SAME newlyFilled landings and comboCountRef
+ * that updateComboMeter just updated, rather than re-deriving landing detection. No-op when there
+ * was no landing this frame. Plays a combo-pitched note on every landing; fires a brief screen
+ * jitter once per newly-crossed multiple of SHAKE_COMBO_STEP (edge-detected via
+ * lastShakeThresholdRef, so it fires exactly once at combo 5, once at 10, etc. — not every frame
+ * past a threshold).
+ */
+function triggerFinaleEffects(
+  newlyFilled: string[],
+  comboCount: number,
+  lastShakeThresholdRef: React.MutableRefObject<number>,
+  setShakeOffset: (offset: { x: number; y: number }) => void
+) {
+  if (newlyFilled.length === 0) return;
+
+  playComboNote(comboCount);
+
+  const threshold = Math.floor(comboCount / SHAKE_COMBO_STEP);
+  if (threshold > 0 && threshold !== lastShakeThresholdRef.current) {
+    lastShakeThresholdRef.current = threshold;
+    const jitter = () => (Math.random() * 2 - 1) * SHAKE_MAGNITUDE_PX;
+    setShakeOffset({ x: jitter(), y: jitter() });
   }
 }
 

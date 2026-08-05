@@ -29,6 +29,7 @@ export const PHASES: PhaseConfig[] = [
   { id: 6, name: 'Bonus Tokens' },
   { id: 7, name: 'Split Stream' },
   { id: 8, name: 'Full Tilt' },
+  { id: 9, name: 'Waterfuls Unleashed' },
 ];
 
 export interface LevelConfig {
@@ -111,6 +112,23 @@ export interface LevelConfig {
    * stay perfectly still, i.e. every Phase 1-7 level, unchanged from the original design.
    */
   cupMotion?: 'sway' | 'tilt' | 'full';
+  /**
+   * Phase 9 Level 26's "raise the pace" mechanic: scales every existing time-based mechanic this
+   * level also enables (sideCurrent's oscillation period, cupMotion's tilt cycle) uniformly
+   * faster. A plain multiplier rather than duplicate period constants, so it composes with
+   * whichever Phase 5/8 flags this level already turns on without touching the shared module-level
+   * constants those flags use for every other level. Undefined = 1 (no change), i.e. every
+   * Phase 1-8 level, unchanged from the original design.
+   */
+  paceMultiplier?: number;
+  /**
+   * Phase 9 Level 27's finale mechanic: gates the combo-driven audio/visual flourishes (rising
+   * landing-note pitch/volume, tank hue tint, threshold screen-shake). Kept separate from
+   * comboMeter itself, since comboMeter's existing semantics are purely about tracking the combo
+   * counter/window — every earlier comboMeter level (11, 12) must keep rendering only the plain
+   * "Combo x N" pill with no side effects. Undefined = no finale effects, i.e. every other level.
+   */
+  finaleEffects?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -472,5 +490,65 @@ export const LEVELS: LevelConfig[] = [
     cupMotion: 'full',
     sideCurrent: true,
     sinkerCount: 1,
+  },
+  {
+    id: 'level-25',
+    phase: 9,
+    levelInPhase: 1,
+    type: 'baskets',
+    name: 'Highlight Reel',
+    targets: TOP_ROW,
+    pegs: [],
+    ballCount: 3,
+    ballColors: BALL_PALETTE,
+    // A short "greatest hits" remix: Phase 3's drifting button (aim challenge) + Phase 5's side
+    // current (in-flight hazard) + Phase 4's combo meter (rewards fast, confident play against
+    // both) — three earlier mechanics stacked on the smallest board, reading as a preview of
+    // everything still to come rather than a new mechanic of its own. Pure data reuse.
+    buttonMotion: 'drift',
+    sideCurrent: true,
+    comboMeter: true,
+  },
+  {
+    id: 'level-26',
+    phase: 9,
+    levelInPhase: 2,
+    type: 'baskets',
+    name: 'Full Speed',
+    targets: [...TOP_ROW, ...MIDDLE_ROW],
+    pegs: PEGS_ROW_1,
+    ballCount: 6,
+    ballColors: BALL_PALETTE,
+    // Same remix ingredients as Level 25 plus Phase 8's tilt, all sped up via paceMultiplier:
+    // shorter ball life, faster current oscillation, quicker cup tilt cycles — "everything from
+    // Level 25, but urgent."
+    buttonMotion: 'drift',
+    sideCurrent: true,
+    cupMotion: 'tilt',
+    comboMeter: true,
+    ballLifespanMs: 18000,
+    tickAudio: true,
+    paceMultiplier: 1.6,
+  },
+  {
+    id: 'level-27',
+    phase: 9,
+    levelInPhase: 3,
+    type: 'baskets',
+    name: 'Waterfuls Unleashed',
+    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
+    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    ballCount: 9,
+    ballColors: BALL_PALETTE,
+    // The set-piece finale: full remix + full pace + the new lightweight combo-reactive
+    // flourishes (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx).
+    buttonMotion: 'drift',
+    sideCurrent: true,
+    cupMotion: 'full',
+    comboMeter: true,
+    finaleEffects: true,
+    ballLifespanMs: 18000,
+    tickAudio: true,
+    paceMultiplier: 1.6,
   },
 ];

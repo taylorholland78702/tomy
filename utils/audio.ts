@@ -81,3 +81,39 @@ export function playBonusChime() {
     osc.stop(noteStart + 0.15);
   }
 }
+
+/** Phase 9 Level 27's finale: pitch/volume ceiling for playComboNote's mapping — see below. */
+const COMBO_NOTE_MAX_COMBO = 12;
+
+/**
+ * Landing note for Phase 9 Level 27's finale (see triggerFinaleEffects in GameCanvas.tsx). Reuses
+ * playCountdownTick's urgency-style linear pitch/volume mapping, driven by the current combo count
+ * instead of countdown urgency: comboCount is clamped to COMBO_NOTE_MAX_COMBO before mapping to
+ * [0,1] so the pitch keeps climbing through a satisfying range but never screeches past it for
+ * very long combos.
+ */
+export function playComboNote(comboCount: number) {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+
+  const t = Math.min(1, Math.max(0, (comboCount - 1) / (COMBO_NOTE_MAX_COMBO - 1)));
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 700 + t * 700;
+
+  const now = ctx.currentTime;
+  const peak = 0.05 + t * 0.07;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(peak, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.11);
+}
