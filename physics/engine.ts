@@ -210,6 +210,25 @@ export function applyCupRetention(bodies: Matter.Body[], anchors: CupAnchor[], s
 }
 
 /**
+ * Hard cup lock, for levels with LevelConfig.stickyRetention set — pins a settled ball exactly to
+ * its cup's rest anchor and zeroes its velocity/angular velocity, every frame, for as long as the
+ * caller keeps calling it. Unlike applyCupRetention's spring (which has a deliberate breaking
+ * point — see its doc comment), this has none: nothing short of the caller no longer invoking it
+ * (see GameCanvas.tsx's forward-tilt eject) can move the ball.
+ *
+ * Deliberately not `isStatic: true` — GameCanvas's render loop filters out static bodies before
+ * mapping them to renderable circles, so a statically-locked ball would simply vanish from the
+ * screen. This keeps the body fully dynamic and rendering normally; it's re-pinned to its anchor
+ * every frame instead, after Matter.Engine.update has already run, so this call is always the last
+ * word on the ball's position/velocity for the frame.
+ */
+export function lockBallAtAnchor(body: Matter.Body, anchor: CupAnchor) {
+  Matter.Body.setPosition(body, { x: anchor.x, y: anchor.restY });
+  Matter.Body.setVelocity(body, { x: 0, y: 0 });
+  Matter.Body.setAngularVelocity(body, 0);
+}
+
+/**
  * Submerged-in-liquid model: buoyancy counteracts gravity, turbulence adds life. Drag is handled
  * separately via `frictionAir` on each body (see WATER_FRICTION_AIR) rather than as a force here.
  */

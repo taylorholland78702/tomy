@@ -15,6 +15,7 @@ import {
   applyWaterPhysics,
   applyRampGuide,
   applyCupRetention,
+  lockBallAtAnchor,
   applyCurrent,
   applyMagnetAttraction,
   CupAnchor,
@@ -144,6 +145,13 @@ const CUP_RETENTION_STRENGTH = 0.00025;
  * "attracting" or "sticking to" balls that hadn't landed in it at all.
  */
 const CUP_RETENTION_RADIUS = CUP_RADIUS * 1.15;
+/**
+ * Forward-tilt eject threshold, checked against engine.gravity.y. useTiltGravity's GRAVITY_SCALE
+ * is 1.1 and its own flat-phone default is +1 (not 0), so gravity.y has to swing all the way down
+ * through 0 and past -0.5 for this to fire — a large, deliberate motion well clear of normal
+ * handheld jitter or the sideways/backward tilts used for regular play.
+ */
+const FORWARD_TILT_EJECT_GRAVITY_Y = -0.5;
 /** Phase 2 Level 3's "fizzy" balls shrink to this fraction of their original size by end of life. */
 const FIZZY_MIN_SCALE = 0.55;
 /** Countdown tick cadence range (ms) — calm at full life, urgent as a ball nears expiry. */
@@ -210,6 +218,9 @@ export function GameCanvas({ level, onComplete }: Props) {
   const physicsRef = useRef<PhysicsWorld | null>(null);
   const jetActiveRef = useRef(false);
   const filledRef = useRef<Set<string>>(new Set());
+  /** Sticky-retention lock: target id -> the ball currently pinned there plus its exact rest anchor
+      (captured once at lock time). Cleared on level (re)mount and on every forward-tilt eject. */
+  const lockedBallsRef = useRef<Map<string, { body: Matter.Body; x: number; restY: number }>>(new Map());
   const wonRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const jetXRef = useRef(width / 2);
@@ -342,6 +353,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     Matter.World.add(pw.world, balls);
 
     filledRef.current = new Set();
+    lockedBallsRef.current = new Map();
     wonRef.current = false;
     ballAgeRef.current = new Map();
     ballScaleRef.current = new Map();
@@ -526,7 +538,33 @@ export function GameCanvas({ level, onComplete }: Props) {
 
       Matter.Engine.update(pw.engine, delta);
 
+      // Forward-tilt eject: a strongly negative gravity.y means the player tipped the phone's top
+      // edge away from them. Release every locked ball back to normal physics (no extra impulse
+      // needed — gravity is already pulling hard that way). Must run AFTER Matter.Engine.update so
+      // the pin below is the last word on position/velocity for this step.
+      const isForwardTiltEject = pw.engine.gravity.y < FORWARD_TILT_EJECT_GRAVITY_Y;
+      if (isForwardTiltEject) {
+        lockedBallsRef.current.clear();
+      } else {
+        for (const locked of lockedBallsRef.current.values()) {
+          lockBallAtAnchor(locked.body, locked);
+        }
+      }
+
       const settledBalls = computeSettledBalls(pw, level, width, cupMotionRef);
+      // Newly-settled balls on a stickyRetention level start locking the frame they settle. The
+      // !isForwardTiltEject guard matters: a ball just ejected this same frame is still sitting
+      // almost exactly at its old rest position with ~0 velocity after one physics step, and would
+      // otherwise immediately satisfy computeSettledBalls and get re-locked, silently canceling the
+      // eject.
+      if (level.stickyRetention && !isForwardTiltEject) {
+        for (const [targetId, ball] of settledBalls) {
+          if (lockedBallsRef.current.has(targetId)) continue;
+          const idx = level.targets.findIndex((t) => t.id === targetId);
+          const anchor = cupAnchorsRef.current[idx];
+          if (anchor) lockedBallsRef.current.set(targetId, { body: ball, x: anchor.x, restY: anchor.restY });
+        }
+      }
       const { changed: filledChanged, newlyFilled } = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
         setTimeout(onComplete, 1200);

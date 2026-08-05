@@ -131,6 +131,20 @@ export interface LevelConfig {
    * "Combo x N" pill with no side effects. Undefined = no finale effects, i.e. every other level.
    */
   finaleEffects?: boolean;
+  /**
+   * Hard cup-lock retention: once a ball settles into a cup on a level with this set, it becomes
+   * permanently pinned there (position + velocity overridden every frame — see lockBallAtAnchor in
+   * physics/engine.ts) instead of being subject to applyCupRetention's breakable spring. The only
+   * way to free locked balls is the player tipping the phone's top edge away from them (a strongly
+   * negative engine.gravity.y — see FORWARD_TILT_EJECT_GRAVITY_Y in GameCanvas.tsx), which releases
+   * every currently-locked ball in the level back to normal physics at once.
+   *
+   * Only set on Phases 1-4 and 6-7 (ids 1-12, 16-21) — phases whose hazard doesn't depend on being
+   * able to dislodge an already-settled ball. Undefined (Phases 5, 8, 9 — ids 13-15, 22-24, 25-27,
+   * unchanged) keeps the original applyCupRetention spring-only behavior, so side current and cup
+   * sway/tilt can still walk a settled ball back out exactly as before.
+   */
+  stickyRetention?: boolean;
 }
 
 const BALL_PALETTE = [
@@ -175,6 +189,8 @@ const PEGS_ROW_2: PegConfig[] = [
 export const LEVELS: LevelConfig[] = [
   {
     id: 'level-1',
+    // See LevelConfig.stickyRetention — Phases 1-4/6-7 lock settled balls permanently.
+    stickyRetention: true,
     phase: 1,
     levelInPhase: 1,
     type: 'baskets',
@@ -187,6 +203,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-2',
+    stickyRetention: true,
     phase: 1,
     levelInPhase: 2,
     type: 'baskets',
@@ -199,6 +216,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-3',
+    stickyRetention: true,
     phase: 1,
     levelInPhase: 3,
     type: 'baskets',
@@ -211,6 +229,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-4',
+    stickyRetention: true,
     phase: 2,
     levelInPhase: 1,
     type: 'baskets',
@@ -224,6 +243,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-5',
+    stickyRetention: true,
     phase: 2,
     levelInPhase: 2,
     type: 'baskets',
@@ -237,6 +257,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-6',
+    stickyRetention: true,
     phase: 2,
     levelInPhase: 3,
     type: 'baskets',
@@ -250,6 +271,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-7',
+    stickyRetention: true,
     phase: 3,
     levelInPhase: 1,
     type: 'baskets',
@@ -263,6 +285,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-8',
+    stickyRetention: true,
     phase: 3,
     levelInPhase: 2,
     type: 'baskets',
@@ -276,6 +299,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-9',
+    stickyRetention: true,
     phase: 3,
     levelInPhase: 3,
     type: 'baskets',
@@ -289,6 +313,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-10',
+    stickyRetention: true,
     phase: 4,
     levelInPhase: 1,
     type: 'baskets',
@@ -306,6 +331,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-11',
+    stickyRetention: true,
     phase: 4,
     levelInPhase: 2,
     type: 'baskets',
@@ -326,6 +352,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-12',
+    stickyRetention: true,
     phase: 4,
     levelInPhase: 3,
     type: 'baskets',
@@ -395,6 +422,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-16',
+    stickyRetention: true,
     phase: 6,
     levelInPhase: 1,
     type: 'baskets',
@@ -408,6 +436,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-17',
+    stickyRetention: true,
     phase: 6,
     levelInPhase: 2,
     type: 'baskets',
@@ -421,6 +450,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-18',
+    stickyRetention: true,
     phase: 6,
     levelInPhase: 3,
     type: 'baskets',
@@ -434,6 +464,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-19',
+    stickyRetention: true,
     phase: 7,
     levelInPhase: 1,
     type: 'baskets',
@@ -447,6 +478,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-20',
+    stickyRetention: true,
     phase: 7,
     levelInPhase: 2,
     type: 'baskets',
@@ -460,6 +492,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-21',
+    stickyRetention: true,
     phase: 7,
     levelInPhase: 3,
     type: 'baskets',
