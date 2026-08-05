@@ -46,6 +46,7 @@ export function LevelManager() {
         <Text style={styles.hudText}>
           Level {level.levelInPhase} · {level.name}
         </Text>
+        <Text style={styles.hudChallengeText}>{level.challenge}</Text>
         <View style={styles.navRow}>
           <Pressable
             style={[styles.navButton, isFirstLevel && styles.navButtonDisabled]}
@@ -100,6 +101,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.85,
     letterSpacing: 0.5,
+  },
+  hudChallengeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '400',
+    opacity: 0.55,
+    marginTop: 2,
   },
   navRow: {
     flexDirection: 'row',
