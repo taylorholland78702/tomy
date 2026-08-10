@@ -134,6 +134,13 @@ const JET_FAN_RATE = 0.14;
 const JET_VERTICAL_RANGE = 490;
 /** Outward push, scaled by height risen — makes trajectories fan into a widening V as they climb. */
 const JET_SPREAD_STRENGTH = 0.000003;
+/**
+ * Jet-exhaust bubbles previously spawned every render frame a jet was held (~16.7ms) — this caps
+ * it to a fixed cadence instead, cutting steady-state live bubble count roughly 5x while still
+ * reading as a continuous stream (each bubble already has its own random x jitter and drifts
+ * upward over its lifetime — see spawnBubble/updateBubbles in physics/engine.ts).
+ */
+const BUBBLE_SPAWN_INTERVAL_MS = 90;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00145;
@@ -241,6 +248,12 @@ export function GameCanvas({ level, onComplete }: Props) {
   const ballScaleRef = useRef<Map<number, number>>(new Map());
   /** Phase 2 Levels 2-3's countdown tick: timestamp the next tick is allowed to play. */
   const nextTickAtRef = useRef(0);
+  /** Jet-exhaust bubble throttle: timestamp each independent spawn site is next allowed to fire —
+      one per site (left jet, secondary/right jet, Phase 7's center burst) so simultaneous jets
+      don't starve each other's cooldown. */
+  const leftBubbleNextAtRef = useRef(0);
+  const rightBubbleNextAtRef = useRef(0);
+  const centerBubbleNextAtRef = useRef(0);
   /** Phase 3's moving-target mechanic: primary button's current x offset from center, px. */
   const buttonOffsetRef = useRef(0);
   /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
@@ -367,6 +380,9 @@ export function GameCanvas({ level, onComplete }: Props) {
     ballAgeRef.current = new Map();
     ballScaleRef.current = new Map();
     nextTickAtRef.current = 0;
+    leftBubbleNextAtRef.current = 0;
+    rightBubbleNextAtRef.current = 0;
+    centerBubbleNextAtRef.current = 0;
     buttonOffsetRef.current = 0;
     secondaryActiveRef.current = false;
     secondaryOffsetRef.current = 0;
@@ -507,7 +523,10 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_SPREAD_STRENGTH,
           leftClip
         );
-        spawnBubble(pw.world, leftJetX, height - 80);
+        if (now >= leftBubbleNextAtRef.current) {
+          spawnBubble(pw.world, leftJetX, height - 80);
+          leftBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
+        }
       }
       if (secondaryActiveRef.current) {
         // Level 9's temporary second button (or Phase 7's permanent right button): an independent
@@ -525,7 +544,10 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_SPREAD_STRENGTH,
           rightClip
         );
-        spawnBubble(pw.world, rightJetX, height - 80);
+        if (now >= rightBubbleNextAtRef.current) {
+          spawnBubble(pw.world, rightJetX, height - 80);
+          rightBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
+        }
       }
       if (level.splitButtons && level.splitButtons !== 'basic' && jetActiveRef.current && secondaryActiveRef.current) {
         // Phase 7 Levels 20-21: pressing both together adds a strong, unclipped center burst that
@@ -541,7 +563,10 @@ export function GameCanvas({ level, onComplete }: Props) {
           JET_FAN_RATE,
           JET_SPREAD_STRENGTH
         );
-        spawnBubble(pw.world, width / 2, height - 80);
+        if (now >= centerBubbleNextAtRef.current) {
+          spawnBubble(pw.world, width / 2, height - 80);
+          centerBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
+        }
       }
       updateBubbles(pw.world, 1600);
 
