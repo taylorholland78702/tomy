@@ -464,15 +464,20 @@ export function GameCanvas({ level, onComplete }: Props) {
         });
       }
 
-      applyWaterPhysics(Matter.Composite.allBodies(pw.world));
+      // Computed once and reused for every force below — none of these mutate the world (no
+      // adds/removes happen until Bucket B, after Matter.Engine.update), so a single snapshot is
+      // exactly equivalent to each call re-walking the composite tree itself, just cheaper.
+      const bodiesThisFrame = Matter.Composite.allBodies(pw.world);
+
+      applyWaterPhysics(bodiesThisFrame);
       if (level.magnetCount && !magnetSettledRef.current) {
         // Phase 6's magnet ball: pulls nearby floating balls toward it while it's still in
         // flight. Gated on last frame's settle status (magnetSettledRef, updated after this
         // frame's settle check below) rather than re-deriving it here, since settledBalls is only
         // known post-update — a one-frame lag that's imperceptible at 60fps.
-        const magnetBall = Matter.Composite.allBodies(pw.world).find((b) => b.label === `ball-${MAGNET_COLOR}`);
+        const magnetBall = bodiesThisFrame.find((b) => b.label === `ball-${MAGNET_COLOR}`);
         if (magnetBall) {
-          applyMagnetAttraction(Matter.Composite.allBodies(pw.world), magnetBall, MAGNET_RADIUS, MAGNET_STRENGTH);
+          applyMagnetAttraction(bodiesThisFrame, magnetBall, MAGNET_RADIUS, MAGNET_STRENGTH);
         }
       }
       if (level.sideCurrent) {
@@ -482,7 +487,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         // dividing rather than a separate constant, so it composes with the existing wave shape.
         const pace = level.paceMultiplier ?? 1;
         const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / (CURRENT_PERIOD_MS / pace)) * 2 * Math.PI);
-        applyCurrent(Matter.Composite.allBodies(pw.world), currentStrength);
+        applyCurrent(bodiesThisFrame, currentStrength);
       }
       // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
       // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
@@ -490,7 +495,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving,
       // except for Level 15's rising floor, which currentRampBaseY tracks) geometry, not wherever
       // the button currently is.
-      applyRampGuide(Matter.Composite.allBodies(pw.world), width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
+      applyRampGuide(bodiesThisFrame, width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
 
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
       if (anyJetActive) {
@@ -500,7 +505,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         // dislodge a ball at all — defeating "tips the phone a lot" entirely. Gating retention to
         // "jet held" keeps tilt working through plain gravity + the cup's rigid walls, same as
         // if this feature didn't exist, while still protecting against jet disturbance.
-        applyCupRetention(Matter.Composite.allBodies(pw.world), cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
+        applyCupRetention(bodiesThisFrame, cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
       }
       // Phase 7's split buttons: each side gets its own fixed x (offset by that side's swipe-drag
       // bias on Level 21) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef
