@@ -20,6 +20,20 @@ export const BUOYANCY_ACCEL = 0.0006;
  * exponential blowup within a handful of frames instead of damping. */
 export const WATER_FRICTION_AIR = 0.05;
 
+/**
+ * Collision categories/masks. Balls collide with each other and with static geometry (walls,
+ * pegs, ramp, cup walls) but never with bubbles — bubbles are purely decorative exhaust and were
+ * always meant to be non-colliding (see spawnBubble's mask below), but the previous `{ group: -1
+ * }` attempt was inert: matter-js's negative-group rule only suppresses collision between two
+ * bodies sharing that SAME group value, and nothing else in this codebase used group -1, so
+ * bubbles were actually colliding with balls/pegs/cup-walls the whole time. Static bodies only
+ * need to collide with balls (static-vs-static pairs are already skipped by matter-js itself,
+ * before any category/mask check runs, so restricting their mask is for clarity, not performance).
+ */
+export const COLLISION_CATEGORY_BALL = 0x0002;
+export const COLLISION_CATEGORY_STATIC = 0x0004;
+export const COLLISION_CATEGORY_BUBBLE = 0x0008;
+
 export interface PhysicsWorld {
   engine: Matter.Engine;
   world: Matter.World;
@@ -33,11 +47,12 @@ export function createPhysicsWorld(width: number, height: number): PhysicsWorld 
   const world = engine.world;
 
   const wallThickness = 40;
+  const staticFilter = { collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL } };
   const walls = [
-    Matter.Bodies.rectangle(width / 2, -wallThickness / 2, width, wallThickness, { isStatic: true, label: 'wall' }),
-    Matter.Bodies.rectangle(width / 2, height + wallThickness / 2, width, wallThickness, { isStatic: true, label: 'wall' }),
-    Matter.Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: 'wall' }),
-    Matter.Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: 'wall' }),
+    Matter.Bodies.rectangle(width / 2, -wallThickness / 2, width, wallThickness, { isStatic: true, label: 'wall', ...staticFilter }),
+    Matter.Bodies.rectangle(width / 2, height + wallThickness / 2, width, wallThickness, { isStatic: true, label: 'wall', ...staticFilter }),
+    Matter.Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: 'wall', ...staticFilter }),
+    Matter.Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height, { isStatic: true, label: 'wall', ...staticFilter }),
   ];
   Matter.World.add(world, walls);
 
@@ -82,6 +97,7 @@ function rampSegment(x1: number, y1: number, x2: number, y2: number, thickness: 
     // Low friction so balls roll/slide down to the low point instead of sticking partway.
     friction: 0.003,
     frictionStatic: 0.006,
+    collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
   });
 }
 
@@ -103,6 +119,7 @@ export function createPeg(world: Matter.World, x: number, y: number, radius = 6)
     restitution: 0.6,
     friction: 0.4,
     label: 'peg',
+    collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
   });
   Matter.World.add(world, peg);
   return peg;
@@ -146,6 +163,7 @@ export function createCup(world: Matter.World, x: number, y: number, id: string)
         friction: 0.9,
         restitution: 0.05,
         label: `cup-wall-${id}`,
+        collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
       })
     );
   }
@@ -382,7 +400,9 @@ export function spawnBubble(world: Matter.World, x: number, y: number) {
     label: 'bubble',
     frictionAir: 0.02,
     density: 0.0001,
-    collisionFilter: { group: -1 },
+    // mask: 0 means this collides with nothing at all — the correct fix for what { group: -1 }
+    // was trying (and, per the module doc comment above, failing) to do.
+    collisionFilter: { category: COLLISION_CATEGORY_BUBBLE, mask: 0 },
   });
   (bubble as any).bubbleId = bubbleId++;
   (bubble as any).spawnTime = Date.now();

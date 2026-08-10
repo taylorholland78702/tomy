@@ -27,6 +27,8 @@ import {
   WATER_FRICTION_AIR,
   BALL_RADIUS,
   CUP_RADIUS,
+  COLLISION_CATEGORY_BALL,
+  COLLISION_CATEGORY_STATIC,
 } from '../physics/engine';
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
@@ -97,6 +99,9 @@ function ballBodyOptions(color: string): Matter.IBodyDefinition {
     density: BALL_DENSITY,
     friction: 0.006,
     label: `ball-${color}`,
+    // Balls collide with each other and with static geometry, never with decorative bubbles —
+    // see the collision-category doc comment in physics/engine.ts.
+    collisionFilter: { category: COLLISION_CATEGORY_BALL, mask: COLLISION_CATEGORY_BALL | COLLISION_CATEGORY_STATIC },
   };
 }
 
