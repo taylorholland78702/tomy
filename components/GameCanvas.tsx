@@ -146,6 +146,20 @@ const JET_SPREAD_STRENGTH = 0.000003;
  * upward over its lifetime — see spawnBubble/updateBubbles in physics/engine.ts).
  */
 const BUBBLE_SPAWN_INTERVAL_MS = 90;
+/**
+ * Fixed physics timestep: the engine now always steps in constant ~16.67ms increments via an
+ * accumulator, however long the real render frame took, instead of feeding it a variable
+ * `now - lastTime` delta directly. matter-js is meaningfully more consistent this way — every
+ * physics force (jet, buoyancy, current, retention, ramp guide, magnet) must be reapplied once per
+ * sub-step, since matter-js zeroes body.force and re-adds gravity fresh after every single
+ * Engine.update call (confirmed in matter-js's own source: Body.js's applyForce only accumulates
+ * into a buffer that Engine.js's _bodiesClearForces empties at the end of each update). The
+ * existing 33ms outer clamp on the render-frame delta (~2x FIXED_DT) means this is 1 sub-step at a
+ * steady 60fps (identical to the old behavior) or 2 on a dropped frame — MAX_SUBSTEPS is a
+ * generous safety margin beyond that, not something normal play should ever reach.
+ */
+const FIXED_DT = 1000 / 60;
+const MAX_SUBSTEPS = 3;
 const RAMP_OFFSET_FROM_BOTTOM = 175;
 /** How firmly balls near the ramp roll toward its low point — see applyRampGuide in physics/engine.ts. */
 const RAMP_GUIDE_STRENGTH = 0.00145;
@@ -259,6 +273,8 @@ export function GameCanvas({ level, onComplete }: Props) {
   const leftBubbleNextAtRef = useRef(0);
   const rightBubbleNextAtRef = useRef(0);
   const centerBubbleNextAtRef = useRef(0);
+  /** Fixed-timestep physics: leftover render-frame time not yet consumed by a FIXED_DT sub-step. */
+  const accumulatorRef = useRef(0);
   /** Phase 3's moving-target mechanic: primary button's current x offset from center, px. */
   const buttonOffsetRef = useRef(0);
   /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
@@ -388,6 +404,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     leftBubbleNextAtRef.current = 0;
     rightBubbleNextAtRef.current = 0;
     centerBubbleNextAtRef.current = 0;
+    accumulatorRef.current = 0;
     buttonOffsetRef.current = 0;
     secondaryActiveRef.current = false;
     secondaryOffsetRef.current = 0;
@@ -469,49 +486,7 @@ export function GameCanvas({ level, onComplete }: Props) {
         });
       }
 
-      // Computed once and reused for every force below — none of these mutate the world (no
-      // adds/removes happen until Bucket B, after Matter.Engine.update), so a single snapshot is
-      // exactly equivalent to each call re-walking the composite tree itself, just cheaper.
-      const bodiesThisFrame = Matter.Composite.allBodies(pw.world);
-
-      applyWaterPhysics(bodiesThisFrame);
-      if (level.magnetCount && !magnetSettledRef.current) {
-        // Phase 6's magnet ball: pulls nearby floating balls toward it while it's still in
-        // flight. Gated on last frame's settle status (magnetSettledRef, updated after this
-        // frame's settle check below) rather than re-deriving it here, since settledBalls is only
-        // known post-update — a one-frame lag that's imperceptible at 60fps.
-        const magnetBall = bodiesThisFrame.find((b) => b.label === `ball-${MAGNET_COLOR}`);
-        if (magnetBall) {
-          applyMagnetAttraction(bodiesThisFrame, magnetBall, MAGNET_RADIUS, MAGNET_STRENGTH);
-        }
-      }
-      if (level.sideCurrent) {
-        // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
-        // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
-        // against one wall over time. Phase 9's paceMultiplier (default 1) shortens the period —
-        // dividing rather than a separate constant, so it composes with the existing wave shape.
-        const pace = level.paceMultiplier ?? 1;
-        const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / (CURRENT_PERIOD_MS / pace)) * 2 * Math.PI);
-        applyCurrent(bodiesThisFrame, currentStrength);
-      }
-      // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
-      // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
-      // origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
-      // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving,
-      // except for Level 15's rising floor, which currentRampBaseY tracks) geometry, not wherever
-      // the button currently is.
-      applyRampGuide(bodiesThisFrame, width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
-
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
-      if (anyJetActive) {
-        // Retention only opposes the jet, not general gravity/tilt: gravity forces are
-        // mass-scaled and these balls are light, so a retention strength that meaningfully
-        // resists the (unscaled) jet is strong enough to make even extreme tilt unable to
-        // dislodge a ball at all — defeating "tips the phone a lot" entirely. Gating retention to
-        // "jet held" keeps tilt working through plain gravity + the cup's rigid walls, same as
-        // if this feature didn't exist, while still protecting against jet disturbance.
-        applyCupRetention(bodiesThisFrame, cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
-      }
       // Phase 7's split buttons: each side gets its own fixed x (offset by that side's swipe-drag
       // bias on Level 21) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef
       // (Phase 3's moving-button state, unused on Phase 7 levels since they never set
@@ -520,67 +495,132 @@ export function GameCanvas({ level, onComplete }: Props) {
       const rightJetX = level.splitButtons ? width / 2 + SPLIT_OFFSET_X + rightSwipeAngleRef.current : width / 2 + secondaryOffsetRef.current;
       const leftClip = level.splitButtons ? { max: width / 2 } : undefined;
       const rightClip = level.splitButtons ? { min: width / 2 } : undefined;
+      const isCenterBurstActive = !!level.splitButtons && level.splitButtons !== 'basic' && jetActiveRef.current && secondaryActiveRef.current;
 
-      if (jetActiveRef.current) {
-        applyAirJet(
-          pw.world,
-          leftJetX,
-          jetYRef.current,
-          JET_STRENGTH,
-          JET_BASE_COLUMN_HALF_WIDTH,
-          JET_VERTICAL_RANGE,
-          JET_FAN_RATE,
-          JET_SPREAD_STRENGTH,
-          leftClip
-        );
-        if (now >= leftBubbleNextAtRef.current) {
-          spawnBubble(pw.world, leftJetX, height - 80);
-          leftBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
-        }
+      // Jet-exhaust bubbles are cosmetic, throttled, wall-clock-timed effects — spawn them once per
+      // render frame here (not once per physics sub-step below), same cadence as before this change.
+      if (jetActiveRef.current && now >= leftBubbleNextAtRef.current) {
+        spawnBubble(pw.world, leftJetX, height - 80);
+        leftBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
       }
-      if (secondaryActiveRef.current) {
-        // Level 9's temporary second button (or Phase 7's permanent right button): an independent
-        // jet at its own x, reusing the exact same shape/strength constants and functions as the
-        // primary — applyAirJet already takes an arbitrary origin x (and now an optional clip), so
-        // no new physics function was needed to support a second one.
-        applyAirJet(
-          pw.world,
-          rightJetX,
-          jetYRef.current,
-          JET_STRENGTH,
-          JET_BASE_COLUMN_HALF_WIDTH,
-          JET_VERTICAL_RANGE,
-          JET_FAN_RATE,
-          JET_SPREAD_STRENGTH,
-          rightClip
-        );
-        if (now >= rightBubbleNextAtRef.current) {
-          spawnBubble(pw.world, rightJetX, height - 80);
-          rightBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
-        }
+      if (secondaryActiveRef.current && now >= rightBubbleNextAtRef.current) {
+        spawnBubble(pw.world, rightJetX, height - 80);
+        rightBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
       }
-      if (level.splitButtons && level.splitButtons !== 'basic' && jetActiveRef.current && secondaryActiveRef.current) {
-        // Phase 7 Levels 20-21: pressing both together adds a strong, unclipped center burst that
-        // reaches the middle column neither half-restricted side jet can reach alone — the actual
-        // payoff for "pressing both together".
-        applyAirJet(
-          pw.world,
-          width / 2,
-          jetYRef.current,
-          CENTER_BURST_STRENGTH,
-          JET_BASE_COLUMN_HALF_WIDTH,
-          JET_VERTICAL_RANGE,
-          JET_FAN_RATE,
-          JET_SPREAD_STRENGTH
-        );
-        if (now >= centerBubbleNextAtRef.current) {
-          spawnBubble(pw.world, width / 2, height - 80);
-          centerBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
-        }
+      if (isCenterBurstActive && now >= centerBubbleNextAtRef.current) {
+        spawnBubble(pw.world, width / 2, height - 80);
+        centerBubbleNextAtRef.current = now + BUBBLE_SPAWN_INTERVAL_MS;
       }
       updateBubbles(pw.world, 1600);
 
-      Matter.Engine.update(pw.engine, delta);
+      // Fixed-timestep physics: matter-js zeroes body.force (and re-applies gravity) after every
+      // single Engine.update call, so every force below must be reapplied once per physics
+      // sub-step, not once per render frame — see the module-level doc comment on FIXED_DT. The
+      // existing 33ms outer clamp on `delta` (~2x FIXED_DT) already bounds this to at most 2
+      // sub-steps in normal operation; MAX_SUBSTEPS is a generous safety margin beyond that, not a
+      // load-bearing limit.
+      accumulatorRef.current += delta;
+      let substeps = 0;
+      while (accumulatorRef.current >= FIXED_DT && substeps < MAX_SUBSTEPS) {
+        // Computed fresh each sub-step (not hoisted above the loop) since Matter.Engine.update can
+        // move bodies between sub-steps — though within one render frame nothing gets added/removed
+        // (that only happens in the Bucket-B tail below, after this loop), so the composite tree's
+        // membership itself never changes here, only positions/velocities.
+        const bodiesThisSubstep = Matter.Composite.allBodies(pw.world);
+
+        applyWaterPhysics(bodiesThisSubstep);
+        if (level.magnetCount && !magnetSettledRef.current) {
+          // Phase 6's magnet ball: pulls nearby floating balls toward it while it's still in
+          // flight. Gated on last frame's settle status (magnetSettledRef, updated after this
+          // frame's settle check below) rather than re-deriving it here, since settledBalls is only
+          // known post-update — a one-frame lag that's imperceptible at 60fps.
+          const magnetBall = bodiesThisSubstep.find((b) => b.label === `ball-${MAGNET_COLOR}`);
+          if (magnetBall) {
+            applyMagnetAttraction(bodiesThisSubstep, magnetBall, MAGNET_RADIUS, MAGNET_STRENGTH);
+          }
+        }
+        if (level.sideCurrent) {
+          // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
+          // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
+          // against one wall over time. Phase 9's paceMultiplier (default 1) shortens the period —
+          // dividing rather than a separate constant, so it composes with the existing wave shape.
+          // Reuses this render frame's `now` for every sub-step (rather than a separately-advancing
+          // simulated clock) — the oscillation only needs to feel continuous in real time, and this
+          // matches the fidelity this force already had before fixed-timestep (evaluated once per
+          // render frame either way).
+          const pace = level.paceMultiplier ?? 1;
+          const currentStrength = CURRENT_BASE_STRENGTH * Math.sin((now / (CURRENT_PERIOD_MS / pace)) * 2 * Math.PI);
+          applyCurrent(bodiesThisSubstep, currentStrength);
+        }
+        // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
+        // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
+        // origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
+        // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving,
+        // except for Level 15's rising floor, which currentRampBaseY tracks) geometry, not wherever
+        // the button currently is.
+        applyRampGuide(bodiesThisSubstep, width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
+
+        if (anyJetActive) {
+          // Retention only opposes the jet, not general gravity/tilt: gravity forces are
+          // mass-scaled and these balls are light, so a retention strength that meaningfully
+          // resists the (unscaled) jet is strong enough to make even extreme tilt unable to
+          // dislodge a ball at all — defeating "tips the phone a lot" entirely. Gating retention to
+          // "jet held" keeps tilt working through plain gravity + the cup's rigid walls, same as
+          // if this feature didn't exist, while still protecting against jet disturbance.
+          applyCupRetention(bodiesThisSubstep, cupAnchorsRef.current, CUP_RETENTION_STRENGTH, CUP_RETENTION_RADIUS);
+        }
+
+        if (jetActiveRef.current) {
+          applyAirJet(
+            pw.world,
+            leftJetX,
+            jetYRef.current,
+            JET_STRENGTH,
+            JET_BASE_COLUMN_HALF_WIDTH,
+            JET_VERTICAL_RANGE,
+            JET_FAN_RATE,
+            JET_SPREAD_STRENGTH,
+            leftClip
+          );
+        }
+        if (secondaryActiveRef.current) {
+          // Level 9's temporary second button (or Phase 7's permanent right button): an independent
+          // jet at its own x, reusing the exact same shape/strength constants and functions as the
+          // primary — applyAirJet already takes an arbitrary origin x (and now an optional clip), so
+          // no new physics function was needed to support a second one.
+          applyAirJet(
+            pw.world,
+            rightJetX,
+            jetYRef.current,
+            JET_STRENGTH,
+            JET_BASE_COLUMN_HALF_WIDTH,
+            JET_VERTICAL_RANGE,
+            JET_FAN_RATE,
+            JET_SPREAD_STRENGTH,
+            rightClip
+          );
+        }
+        if (isCenterBurstActive) {
+          // Phase 7 Levels 20-21: pressing both together adds a strong, unclipped center burst that
+          // reaches the middle column neither half-restricted side jet can reach alone — the actual
+          // payoff for "pressing both together".
+          applyAirJet(
+            pw.world,
+            width / 2,
+            jetYRef.current,
+            CENTER_BURST_STRENGTH,
+            JET_BASE_COLUMN_HALF_WIDTH,
+            JET_VERTICAL_RANGE,
+            JET_FAN_RATE,
+            JET_SPREAD_STRENGTH
+          );
+        }
+
+        Matter.Engine.update(pw.engine, FIXED_DT);
+        accumulatorRef.current -= FIXED_DT;
+        substeps++;
+      }
+      if (substeps === MAX_SUBSTEPS) accumulatorRef.current = 0; // drop backlog rather than spiral after e.g. a backgrounded tab
 
       // Forward-tilt eject: a strongly negative gravity.y means the player tipped the phone's top
       // edge away from them. Release every locked ball back to normal physics (no extra impulse
