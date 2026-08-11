@@ -33,7 +33,7 @@ import {
 import { useTiltGravity } from '../hooks/useTiltGravity';
 import { LevelConfig, TargetConfig } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete, hapticSinkerWarning, hapticJetPress } from '../utils/haptics';
-import { playCountdownTick, playBonusChime, playComboNote } from '../utils/audio';
+import { playCountdownTick, playBonusChime, playComboNote, playLandingNote } from '../utils/audio';
 
 /**
  * SVG arc for a true semicircle: rim at (x±CUP_RADIUS, y), bulging down to (x, y + CUP_RADIUS).
@@ -718,6 +718,9 @@ export function GameCanvas({ level, onComplete }: Props) {
         setTimeout(onComplete, 1200);
       });
       if (filledChanged) setFilledIds(Array.from(filledRef.current));
+      if (newlyFilled.length > 0 && !level.finaleEffects) {
+        playLandingNote(filledRef.current.size / level.targets.length);
+      }
 
       updateBallLifecycle(pw, level, settledBalls, ballAgeRef.current, ballScaleRef.current, delta);
       updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);

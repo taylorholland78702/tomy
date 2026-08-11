@@ -117,3 +117,36 @@ export function playComboNote(comboCount: number) {
   osc.start(now);
   osc.stop(now + 0.11);
 }
+
+/**
+ * Landing note for every non-finale level (see the landing check in GameCanvas.tsx). Before this,
+ * a normal landing played no sound at all outside of comboMeter/finaleEffects levels - only a
+ * haptic. Reuses playComboNote's exact synthesis shape, but driven by how full the level is
+ * (0 = just started, 1 = last target just filled) instead of combo count, so pitch rises as a
+ * "getting warmer" cue across every level.
+ */
+export function playLandingNote(progress: number) {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+
+  const t = Math.min(1, Math.max(0, progress));
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 700 + t * 700;
+
+  const now = ctx.currentTime;
+  const peak = 0.05 + t * 0.07;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(peak, now + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.11);
+}
