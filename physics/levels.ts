@@ -239,7 +239,15 @@ export const LEVELS: LevelConfig[] = [
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 30000,
+    // Shortened from 30000 and tickAudio added: catching became both easier (wider settle
+    // tolerance) and permanent (stickyRetention) this session, which let a caught ball vanish
+    // from the clock entirely — the timer only ever threatened balls still in the air. This
+    // retunes the pressure back up now that landing safely is far more forgiving than when 30000
+    // was originally tuned. tickAudio was also missing entirely on this phase's own levels (only
+    // set on 26/27), so the countdown ring's urgency has always been silent here — a real gap,
+    // not just a difficulty choice.
+    ballLifespanMs: 20000,
+    tickAudio: true,
   },
   {
     id: 'level-5',
@@ -253,7 +261,10 @@ export const LEVELS: LevelConfig[] = [
     pegs: PEGS_ROW_1,
     ballCount: 6,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 30000,
+    // See level-4's comment — same retune, tightened further since more balls means less slack
+    // needed per ball.
+    ballLifespanMs: 16000,
+    tickAudio: true,
   },
   {
     id: 'level-6',
@@ -267,7 +278,9 @@ export const LEVELS: LevelConfig[] = [
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
     ballColors: BALL_PALETTE,
-    ballLifespanMs: 30000,
+    // See level-4's comment — same retune, tightened further as the phase's mastery checkpoint.
+    ballLifespanMs: 13000,
+    tickAudio: true,
   },
   {
     id: 'level-7',
