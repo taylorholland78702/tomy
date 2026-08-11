@@ -82,6 +82,70 @@ function ringColor(fraction: number): string {
 const ballGradientId = (color: string) => `ball-grad-${color.replace('#', '')}`;
 
 /**
+ * Colorblind-friendly glyph per ball color, so Phase 4's chain-match (the one mechanic that
+ * actually depends on distinguishing ball colors) doesn't rely on color alone. Keyed to the 6
+ * distinct hex values in BALL_PALETTE (physics/levels.ts has 9 entries but only 6 unique colors).
+ */
+const BALL_PATTERN_BY_COLOR: Record<string, 'plus' | 'ring' | 'triangle' | 'square' | 'diamond' | 'x'> = {
+  '#FF3B7F': 'plus',
+  '#8A5CFF': 'ring',
+  '#FFD23B': 'triangle',
+  '#3BD6FF': 'square',
+  '#3BFFA0': 'diamond',
+  '#FF7A3B': 'x',
+};
+
+/** Small glyph centered on a ball, built from primitives already in use elsewhere in this file. */
+function BallPatternGlyph({ x, y, radius, pattern }: { x: number; y: number; radius: number; pattern: string }) {
+  const s = radius * 0.45;
+  const stroke = 'rgba(20,20,30,0.55)';
+  const fill = 'rgba(255,255,255,0.9)';
+  const strokeWidth = Math.max(1, radius * 0.09);
+  switch (pattern) {
+    case 'plus':
+      return (
+        <>
+          <Line x1={x - s} y1={y} x2={x + s} y2={y} stroke={fill} strokeWidth={strokeWidth} strokeLinecap="round" />
+          <Line x1={x} y1={y - s} x2={x} y2={y + s} stroke={fill} strokeWidth={strokeWidth} strokeLinecap="round" />
+        </>
+      );
+    case 'x':
+      return (
+        <>
+          <Line x1={x - s} y1={y - s} x2={x + s} y2={y + s} stroke={fill} strokeWidth={strokeWidth} strokeLinecap="round" />
+          <Line x1={x - s} y1={y + s} x2={x + s} y2={y - s} stroke={fill} strokeWidth={strokeWidth} strokeLinecap="round" />
+        </>
+      );
+    case 'ring':
+      return <Circle cx={x} cy={y} r={s * 0.75} fill="none" stroke={fill} strokeWidth={strokeWidth} />;
+    case 'triangle':
+      return (
+        <Path
+          d={`M ${x} ${y - s} L ${x + s} ${y + s * 0.8} L ${x - s} ${y + s * 0.8} Z`}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={1}
+        />
+      );
+    case 'square':
+      return (
+        <Path
+          d={`M ${x - s * 0.75} ${y - s * 0.75} L ${x + s * 0.75} ${y - s * 0.75} L ${x + s * 0.75} ${y + s * 0.75} L ${x - s * 0.75} ${y + s * 0.75} Z`}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={1}
+        />
+      );
+    case 'diamond':
+      return (
+        <Path d={`M ${x} ${y - s} L ${x + s} ${y} L ${x} ${y + s} L ${x - s} ${y} Z`} fill={fill} stroke={stroke} strokeWidth={1} />
+      );
+    default:
+      return null;
+  }
+}
+
+/**
  * Shared Matter.js body options for every playable ball — the initial level-setup spawn and
  * Phase 4's bonus-ball spawn (see triggerBonus) both use this, so a bonus ball behaves identically
  * to a normal one rather than needing its own tuning.
@@ -896,6 +960,9 @@ export function GameCanvas({ level, onComplete }: Props) {
               fill={b.isBubble ? 'rgba(255,255,255,0.55)' : b.isSinker ? SINKER_COLOR : `url(#${ballGradientId(b.color)})`}
               opacity={b.isBubble ? 0.6 : 1}
             />
+            {!b.isBubble && !b.isSinker && BALL_PATTERN_BY_COLOR[b.color] && (
+              <BallPatternGlyph x={b.x} y={b.y} radius={b.radius} pattern={BALL_PATTERN_BY_COLOR[b.color]} />
+            )}
             {b.ringFraction !== undefined &&
               (() => {
                 const ringRadius = b.radius + 4;
