@@ -45,6 +45,15 @@ function cupPath(x: number, y: number) {
   return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 0 ${x + CUP_RADIUS} ${y}`;
 }
 
+/**
+ * Cosmetic-only lift for the drawn cup bowl — purely visual, does not touch createCup's physical
+ * wall segments, restY, or any scoring/settle-tolerance math. A resting ball's center sits at
+ * restY = y + (CUP_RADIUS - BALL_RADIUS) unchanged; raising just the drawn rim by this much moves
+ * more of the ball's visible area above the rim line, so a landed ball reads as caught near the
+ * rim rather than sunk into the bowl.
+ */
+const CUP_VISUAL_RISE = 5;
+
 /** Phase 8's cup motion: a cup's current absolute position/tilt, plus how much dx/tilt has already been physically applied to its walls so far (kept delta-based so translateCup/rotateCup calls compose correctly, mirroring rampRiseAppliedRef's pattern). */
 interface CupMotionState {
   x: number;
@@ -859,7 +868,7 @@ export function GameCanvas({ level, onComplete }: Props) {
           const isRainbow = t.id === rainbowTargetId;
           const dyn = level.cupMotion ? cupMotionSnapshot[t.id] : undefined;
           const cx = dyn?.x ?? width / 2 + t.dx;
-          const cy = dyn?.y ?? t.y;
+          const cy = (dyn?.y ?? t.y) - CUP_VISUAL_RISE;
           const tiltDeg = dyn?.tiltDeg ?? 0;
           const closed = Math.abs(tiltDeg) > CUP_SETTLE_TILT_LIMIT_DEG;
           return (
