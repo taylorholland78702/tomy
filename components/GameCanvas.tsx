@@ -60,7 +60,7 @@ function gearPath(cx: number, cy: number, radius: number, sides: number): string
   return `M ${points[0]} L ${points.slice(1).join(' L ')} Z`;
 }
 
-/** Phase 8's cup motion: a cup's current absolute position/tilt, plus how much dx/tilt has already been physically applied to its walls so far (kept delta-based so translateCup/rotateCup calls compose correctly, mirroring rampRiseAppliedRef's pattern). */
+/** Phase 3's cup motion: a cup's current absolute position/tilt, plus how much dx/tilt has already been physically applied to its walls so far (kept delta-based so translateCup/rotateCup calls compose correctly, mirroring rampRiseAppliedRef's pattern). */
 interface CupMotionState {
   x: number;
   y: number;
@@ -105,9 +105,10 @@ function formatClock(ms: number): string {
 }
 
 /**
- * Shared Matter.js body options for every playable ball — the initial level-setup spawn and
- * Phase 4's bonus-ball spawn (see triggerBonus) both use this, so a bonus ball behaves identically
- * to a normal one rather than needing its own tuning.
+ * Shared Matter.js body options for every playable ball — the initial level-setup spawn and the
+ * chain-match/rainbow-cup bonus-ball spawn (see triggerBonus, currently unused since both
+ * mechanics were removed) both use this, so a bonus ball behaves identically to a normal one
+ * rather than needing its own tuning.
  */
 function ballBodyOptions(color: string): Matter.IBodyDefinition {
   return {
@@ -143,7 +144,7 @@ interface RenderBody {
   radius: number;
   color: string;
   isBubble: boolean;
-  /** Phase 5's sinker ball — renders as a flat muted circle instead of a gradient-filled one. */
+  /** The sinker ball hazard — renders as a flat muted circle instead of a gradient-filled one. */
   isSinker?: boolean;
 }
 
@@ -217,7 +218,7 @@ const TICK_INTERVAL_URGENT_MS = 200;
 /** Sunken Ship's portals: how long a ball is immune to re-teleporting right after landing on an exit. */
 const PORTAL_COOLDOWN_MS = 500;
 /**
- * Phase 3's moving-target mechanic: how far the Air Jet button can shift from center, px. Kept
+ * The moving-target mechanic: how far the Air Jet button can shift from center, px. Kept
  * well clear of the fixed Restart/tilt-permission buttons at the screen edges (see
  * LevelManager.tsx / GameCanvas.tsx's own bottom-corner overlays).
  */
@@ -231,39 +232,39 @@ const TWIN_APPEAR_INTERVAL_MS = 4500;
 const TWIN_VISIBLE_MS = 1800;
 /** Phase 4's combo meter: a landing within this many ms of the last one extends the streak. */
 const COMBO_WINDOW_MS = 3000;
-/** Phase 9 Level 27's finale: a screen jitter fires once per this many combo count crossed. */
+/** Phase 4 Level 12's finale: a screen jitter fires once per this many combo count crossed. */
 const SHAKE_COMBO_STEP = 5;
 const SHAKE_MAGNITUDE_PX = 6;
 const SHAKE_DURATION_MS = 140;
-/** Phase 4 Level 12's rainbow bonus cup: how often it appears, and how long it stays up. */
+/** The rainbow bonus cup (currently unused): how often it appears, and how long it stays up. */
 const RAINBOW_APPEAR_INTERVAL_MS = 5500;
 const RAINBOW_VISIBLE_MS = 2500;
-/** Phase 5's side current: a full oscillation cycle, ms — slower than Level 7's 5s drift so it reads as "gentle". */
+/** The side current hazard: a full oscillation cycle, ms — slower than Level 7's 5s drift so it reads as "gentle". */
 const CURRENT_PERIOD_MS = 8000;
 const CURRENT_BASE_STRENGTH = 0.0004;
-/** Phase 5's sinker ball: a muted slate gray, clearly distinct from the vibrant palette. */
+/** The sinker ball hazard: a muted slate gray, clearly distinct from the vibrant palette. */
 const SINKER_COLOR = '#6B7280';
-/** Phase 5 Level 15's rising floor: total px the ramp rises, and how long that takes. */
+/** The rising floor hazard (currently unused): total px the ramp rises, and how long that takes. */
 const RISING_WATER_TOTAL_RISE = 100;
 const RISING_WATER_DURATION_MS = 40000;
-/** Phase 6's golden/magnet balls: fixed reserved colors, distinct from BALL_PALETTE and SINKER_COLOR. */
+/** The golden/magnet balls (currently unused): fixed reserved colors, distinct from BALL_PALETTE and SINKER_COLOR. */
 const GOLD_COLOR = '#FFD700';
 const MAGNET_COLOR = '#B24BF3';
 const MAGNET_RADIUS = 140;
 const MAGNET_STRENGTH = 0.00035;
-/** Phase 6 Level 18's chargeable jet: hold past this long before releasing to add a power burst. */
+/** The chargeable jet (currently unused): hold past this long before releasing to add a power burst. */
 const CHARGE_THRESHOLD_MS = 700;
 const CHARGE_BURST_STRENGTH = JET_STRENGTH * 2.5;
-/** Phase 7's split buttons: how far each sits from center, px. */
+/** The split buttons mechanic (currently unused): how far each sits from center, px. */
 const SPLIT_OFFSET_X = 70;
-/** Phase 7 Levels 20-21's combined-press center burst: stronger than a normal single-side push. */
+/** The combined-press center burst (currently unused): stronger than a normal single-side push. */
 const CENTER_BURST_STRENGTH = JET_STRENGTH * 1.8;
-/** Phase 8's cup sway: how far a cup drifts from its base x, px, and one full cycle's duration. */
+/** Phase 3's cup sway: how far a cup drifts from its base x, px, and one full cycle's duration. */
 const CUP_SWAY_RANGE_X = 16;
 const CUP_SWAY_PERIOD_MS = 6000;
 /** Per-cup stagger so multiple swaying cups on the same level don't move in lockstep. */
 const CUP_SWAY_PHASE_STAGGER_MS = 1100;
-/** Phase 8's cup tilt: max rotation at the peak of a close, one full open->close->open cycle, and how much of that cycle is spent closing. */
+/** Phase 3's cup tilt: max rotation at the peak of a close, one full open->close->open cycle, and how much of that cycle is spent closing. */
 const CUP_TILT_MAX_DEG = 38;
 const CUP_TILT_CYCLE_MS = 4500;
 const CUP_TILT_CLOSE_MS = 1400;
@@ -291,14 +292,14 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   /** Phase 2's shared level clock: timestamp the next tick sound is allowed to play. */
   const nextTickAtRef = useRef(0);
   /** Jet-exhaust bubble throttle: timestamp each independent spawn site is next allowed to fire —
-      one per site (left jet, secondary/right jet, Phase 7's center burst) so simultaneous jets
-      don't starve each other's cooldown. */
+      one per site (left jet, secondary/right jet, the split-buttons center burst, currently
+      unused) so simultaneous jets don't starve each other's cooldown. */
   const leftBubbleNextAtRef = useRef(0);
   const rightBubbleNextAtRef = useRef(0);
   const centerBubbleNextAtRef = useRef(0);
   /** Fixed-timestep physics: leftover render-frame time not yet consumed by a FIXED_DT sub-step. */
   const accumulatorRef = useRef(0);
-  /** Phase 3's moving-target mechanic: primary button's current x offset from center, px. */
+  /** The moving-target mechanic: primary button's current x offset from center, px. */
   const buttonOffsetRef = useRef(0);
   /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
   const secondaryActiveRef = useRef(false);
@@ -307,33 +308,33 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const twinNextAtRef = useRef(0);
   const twinHideAtRef = useRef(0);
   const twinVisibleRef = useRef(false);
-  /** Phase 4's chain-match mechanic: keys of matchRows groups that have already fired their bonus this level instance. */
+  /** The chain-match mechanic (currently unused): keys of matchRows groups that have already fired their bonus this level instance. */
   const matchedRowsRef = useRef<Set<string>>(new Set());
   /** Phase 4's combo meter: current streak length, and the timestamp of the last landing. */
   const comboCountRef = useRef(0);
   const comboLastLandingAtRef = useRef(0);
-  /** Phase 4 Level 12's rainbow bonus cup: which target (if any) is currently active, and its schedule. */
+  /** The rainbow bonus cup (currently unused): which target (if any) is currently active, and its schedule. */
   const rainbowTargetIdRef = useRef<string | null>(null);
   const rainbowNextAtRef = useRef(0);
   const rainbowHideAtRef = useRef(0);
-  /** Phase 5's rising floor: when this level instance started, and how much rise has been applied so far. */
+  /** The rising floor hazard (currently unused): when this level instance started, and how much rise has been applied so far. */
   const levelStartAtRef = useRef(0);
   const rampRiseAppliedRef = useRef(0);
   const rampInfoRef = useRef<RampInfo | null>(null);
-  /** Phase 5's sinker ball: whether one is currently settled in any cup, to edge-detect the warning haptic. */
+  /** The sinker ball hazard: whether one is currently settled in any cup, to edge-detect the warning haptic. */
   const sinkerInCupRef = useRef(false);
-  /** Phase 6's golden ball: whether its one-time auto-fill bonus has already fired this level instance. */
+  /** The golden ball (currently unused): whether its one-time auto-fill bonus has already fired this level instance. */
   const goldenTriggeredRef = useRef(false);
-  /** Phase 6 Level 18's chargeable jet: timestamp the current press started, for measuring hold duration on release. */
+  /** The chargeable jet (currently unused): timestamp the current press started, for measuring hold duration on release. */
   const jetHoldStartAtRef = useRef(0);
-  /** Phase 6's magnet ball: whether it was settled as of the previous frame's settle check. */
+  /** The magnet ball (currently unused): whether it was settled as of the previous frame's settle check. */
   const magnetSettledRef = useRef(false);
-  /** Phase 7 Level 21's swipe-to-angle: current drag-biased x offset for each split button's jet. */
+  /** The swipe-to-angle mechanic (currently unused): current drag-biased x offset for each split button's jet. */
   const leftSwipeAngleRef = useRef(0);
   const rightSwipeAngleRef = useRef(0);
-  /** Phase 8's cup motion: target id -> its physical wall segments, for translate/rotate. */
+  /** Phase 3's cup motion: target id -> its physical wall segments, for translate/rotate. */
   const cupWallsRef = useRef<Map<string, Matter.Body[]>>(new Map());
-  /** Phase 8's cup motion: target id -> its current absolute position/tilt and how much of each has already been applied to the physical walls so far (kept delta-based like rampRiseAppliedRef). */
+  /** Phase 3's cup motion: target id -> its current absolute position/tilt and how much of each has already been applied to the physical walls so far (kept delta-based like rampRiseAppliedRef). */
   const cupMotionRef = useRef<Map<string, CupMotionState>>(new Map());
   /** Reef's rotating gears: gear id -> its physics body, and id -> cumulative radians rotated so far. */
   const gearBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
@@ -350,7 +351,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   /** Sunken Ship's portals: ball body id -> timestamp it becomes eligible for another teleport,
       so landing on the exit doesn't immediately teleport it straight back. */
   const portalCooldownRef = useRef<Map<number, number>>(new Map());
-  /** Phase 9 Level 27's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
+  /** Phase 4 Level 12's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
   const shakeOffsetRef = useRef({ x: 0, y: 0 });
   const shakeUntilRef = useRef(0);
   const comboShakeThresholdRef = useRef(0);
@@ -379,7 +380,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
   const rampBaseY = height - RAMP_OFFSET_FROM_BOTTOM;
-  // Phase 5 Level 15's rising floor moves the ramp upward over time (see rampRiseAppliedRef in the
+  // The rising floor hazard (currently unused) moves the ramp upward over time (see rampRiseAppliedRef in the
   // setup effect below) — recomputed from rampRise state each render so the rendered <Line>s track
   // the physical ramp bodies, which stay 0 (no visible change) for every level without risingWater.
   const ramp = computeRampPoints(width, rampBaseY - rampRise);
@@ -480,13 +481,13 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       const row = Math.floor(i / cols);
       const rowCount = Math.min(cols, level.ballCount - row * cols);
       const rowStartX = rampInfo.lowPoint.x - ((rowCount - 1) * spacing) / 2;
-      // Reserve trailing slots for each special ball type, sinker first — Phase 5/6 levels never
-      // combine more than one of these, but reserving in a fixed order keeps this correct even if
+      // Reserve trailing slots for each special ball type, sinker first — no level currently
+      // combines more than one of these, but reserving in a fixed order keeps this correct even if
       // a future level did.
       const isSinker = i >= level.ballCount - sinkerCount;
       const isGolden = !isSinker && i >= level.ballCount - sinkerCount - goldenCount;
       const isMagnet = !isSinker && !isGolden && i >= level.ballCount - sinkerCount - goldenCount - magnetCount;
-      // Phase 5's sinker ball: a 'sinker-' label instead of 'ball-' — physically identical (same
+      // The sinker ball hazard: a 'sinker-' label instead of 'ball-' — physically identical (same
       // ballBodyOptions), but every settle/win-condition check filters on the 'ball-' prefix, so a
       // sinker can occupy a cup without ever counting toward filling it. Golden/magnet balls stay
       // 'ball-' labeled (they DO count toward filling their cup) and are only distinguished by a
@@ -561,7 +562,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       );
       if (level.buttonMotion) jetXRef.current = width / 2 + buttonOffsetRef.current;
 
-      // Phase 5 Level 15's rising floor: gradually translates the ramp's static bodies upward
+      // The rising floor hazard (currently unused): gradually translates the ramp's static bodies upward
       // over RISING_WATER_DURATION_MS, dragging the jet origin with it. Cup positions never move
       // (they're fixed in level.targets), so a rising ramp is exactly "shrinks the vertical
       // distance balls need to travel" — no cup/geometry changes needed anywhere else.
@@ -579,7 +580,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       }
       const currentRampBaseY = rampBaseY - rampRiseAppliedRef.current;
 
-      // Phase 8's cup motion: no-ops immediately when level.cupMotion is unset, so this is inert
+      // Phase 3's cup motion: no-ops immediately when level.cupMotion is unset, so this is inert
       // by construction for every earlier phase — see updateCupMotion's own doc comment.
       updateCupMotion(level, now, width, cupWallsRef, cupMotionRef);
       if (level.cupMotion) {
@@ -631,10 +632,10 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       }
 
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
-      // Phase 7's split buttons: each side gets its own fixed x (offset by that side's swipe-drag
-      // bias on Level 21) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef
-      // (Phase 3's moving-button state, unused on Phase 7 levels since they never set
-      // buttonMotion) only applies when the level isn't split, so Phase 3/9 behavior is untouched.
+      // The split buttons mechanic (currently unused): each side gets its own fixed x (offset by that side's swipe-drag
+      // bias) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef (the
+      // moving-button state, unused on split-button levels since they never set buttonMotion) only
+      // applies when the level isn't split, so that behavior is untouched.
       const leftJetX = level.splitButtons ? width / 2 - SPLIT_OFFSET_X + leftSwipeAngleRef.current : jetXRef.current;
       const rightJetX = level.splitButtons ? width / 2 + SPLIT_OFFSET_X + rightSwipeAngleRef.current : width / 2 + secondaryOffsetRef.current;
       const leftClip = level.splitButtons ? { max: width / 2 } : undefined;
@@ -674,7 +675,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
 
         applyWaterPhysics(bodiesThisSubstep);
         if (level.magnetCount && !magnetSettledRef.current) {
-          // Phase 6's magnet ball: pulls nearby floating balls toward it while it's still in
+          // The magnet ball (currently unused): pulls nearby floating balls toward it while it's still in
           // flight. Gated on last frame's settle status (magnetSettledRef, updated after this
           // frame's settle check below) rather than re-deriving it here, since settledBalls is only
           // known post-update — a one-frame lag that's imperceptible at 60fps.
@@ -684,9 +685,9 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           }
         }
         if (level.sideCurrent) {
-          // Phase 5's side current: a smooth, continuously-oscillating sideways force (sine wave,
-          // like Level 7's button drift) rather than a one-way push, so balls don't just pile up
-          // against one wall over time. Phase 9's paceMultiplier (default 1) shortens the period —
+          // The side current hazard: a smooth, continuously-oscillating sideways force (sine wave,
+          // like the finale's button drift) rather than a one-way push, so balls don't just pile up
+          // against one wall over time. Phase 4's paceMultiplier (default 1) shortens the period —
           // dividing rather than a separate constant, so it composes with the existing wave shape.
           // Reuses this render frame's `now` for every sub-step (rather than a separately-advancing
           // simulated clock) — the oscillation only needs to feel continuous in real time, and this
@@ -697,10 +698,10 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           applyCurrent(bodiesThisSubstep, currentStrength);
         }
         // Note: the ramp's low point is always the fixed screen-center x (see computeRampPoints),
-        // NOT jetXRef — those two only coincided by construction before Phase 3, where the jet
-        // origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
+        // NOT jetXRef — those two only coincided by construction before buttonMotion existed, where
+        // the jet origin was permanently parked at the ramp's low point. Now that jetXRef can move with the
         // Air Jet button, the roll-to-center guide must keep targeting the ramp's actual (unmoving,
-        // except for Level 15's rising floor, which currentRampBaseY tracks) geometry, not wherever
+        // except for the rising floor hazard, currently unused, which currentRampBaseY tracks) geometry, not wherever
         // the button currently is.
         applyRampGuide(bodiesThisSubstep, width / 2, currentRampBaseY, RAMP_GUIDE_STRENGTH);
 
@@ -728,10 +729,11 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           );
         }
         if (secondaryActiveRef.current) {
-          // Level 9's temporary second button (or Phase 7's permanent right button): an independent
-          // jet at its own x, reusing the exact same shape/strength constants and functions as the
-          // primary — applyAirJet already takes an arbitrary origin x (and now an optional clip), so
-          // no new physics function was needed to support a second one.
+          // The 'twin' buttonMotion variant's temporary second button, or the retired split-buttons
+          // mechanic's permanent right button (both currently unused): an independent jet at its
+          // own x, reusing the exact same shape/strength constants and functions as the primary —
+          // applyAirJet already takes an arbitrary origin x (and now an optional clip), so no new
+          // physics function was needed to support a second one.
           applyAirJet(
             pw.world,
             rightJetX,
@@ -745,7 +747,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           );
         }
         if (isCenterBurstActive) {
-          // Phase 7 Levels 20-21: pressing both together adds a strong, unclipped center burst that
+          // The centerBurst split-buttons variant (currently unused): pressing both together adds a strong, unclipped center burst that
           // reaches the middle column neither half-restricted side jet can reach alone — the actual
           // payoff for "pressing both together".
           applyAirJet(
@@ -972,7 +974,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         if (active) {
           jetHoldStartAtRef.current = Date.now();
         } else if (jetActiveRef.current && Date.now() - jetHoldStartAtRef.current >= CHARGE_THRESHOLD_MS) {
-          // Phase 6 Level 18: a hold that reached the charge threshold gets one extra strong
+          // The chargeable jet mechanic (currently unused): a hold that reached the charge threshold gets one extra strong
           // burst on release, on top of whatever the continuous hold already applied every frame
           // — reusing applyAirJet (the same function the continuous hold calls) at a higher
           // strength, just once, rather than a new physics primitive. matter-js accumulates any
@@ -997,9 +999,10 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         }
       }
 
-      // Phase 3 Levels 8-9: jump to a new spot the instant the button is released, so every
-      // press requires a fresh re-aim. Checked against the *previous* value (before overwriting
-      // it below) so this only fires on a genuine press->release transition, not every frame.
+      // The 'jump'/'twin' buttonMotion variants (currently unused): jump to a new spot the instant
+      // the button is released, so every press requires a fresh re-aim. Checked against the
+      // *previous* value (before overwriting it below) so this only fires on a genuine
+      // press->release transition, not every frame.
       if (!active && jetActiveRef.current && (level.buttonMotion === 'jump' || level.buttonMotion === 'twin')) {
         buttonOffsetRef.current = pickJumpOffset(buttonOffsetRef.current);
       }
@@ -1035,8 +1038,8 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       />
       <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
-          {/* Always include GOLD_COLOR/MAGNET_COLOR here (not just level.ballColors) — Phase 6's
-              golden/magnet balls use these as their label color but aren't part of a level's own
+          {/* Always include GOLD_COLOR/MAGNET_COLOR here (not just level.ballColors) — golden/magnet
+              balls (currently unused) use these as their label color but aren't part of a level's own
               palette, so without this their gradient lookup below would silently miss and render
               invisible (no fill) rather than error. */}
           {Array.from(new Set([...level.ballColors, GOLD_COLOR, MAGNET_COLOR])).map((color) => (
@@ -1303,8 +1306,8 @@ const styles = StyleSheet.create({
 });
 
 /**
- * Phase 3's moving-target mechanic. No-op (returns false) when the level has no buttonMotion, so
- * Phase 1/2 levels are unaffected.
+ * The moving-target mechanic. No-op (returns false) when the level has no buttonMotion, so every
+ * level outside the finale is unaffected.
  *
  * 'drift' sways buttonOffsetRef continuously via a sine wave — smooth and fully predictable.
  * 'jump'/'twin' don't move the primary button here at all; that only happens on release, handled
@@ -1346,9 +1349,9 @@ function updateButtonMotion(
 }
 
 /**
- * Triangular wave for Phase 8's tilt mechanic: a cup sits open (0deg) for most of
+ * Triangular wave for Phase 3's tilt mechanic: a cup sits open (0deg) for most of
  * CUP_TILT_CYCLE_MS, then ramps 0->CUP_TILT_MAX_DEG->0 over the final CUP_TILT_CLOSE_MS of the
- * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble. Phase 9's
+ * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble. Phase 4's
  * paceMultiplier (default 1) shortens both the cycle and close window, for "quicker tilts" — the
  * per-cup phase stagger passed in via `now` is left un-scaled by the caller so speeding up doesn't
  * also resync all cups' tilts.
@@ -1384,8 +1387,8 @@ function isDutyCycleActive(
 }
 
 /**
- * Phase 8's cup motion: no-ops immediately when level.cupMotion is unset, so it never touches
- * cupWallsRef's bodies or cupMotionRef's state for any Phase 1-7 level. Otherwise, for each target
+ * Phase 3's cup motion: no-ops immediately when level.cupMotion is unset, so it never touches
+ * cupWallsRef's bodies or cupMotionRef's state for any level outside Phase 3/4. Otherwise, for each target
  * (staggered by its index in level.targets so multiple cups don't move in lockstep), computes a
  * desired sway offset and/or tilt angle, diffs against what's already been applied to get an
  * incremental delta (mirrors the rising-floor's rampRiseAppliedRef pattern), and physically
@@ -1429,7 +1432,8 @@ function updateCupMotion(
 }
 
 /**
- * Picks a new random button offset for Phase 3 Levels 8-9's "jump" behavior, rejecting draws too
+ * Picks a new random button offset for the 'jump'/'twin' buttonMotion variants' (currently
+ * unused) "jump" behavior, rejecting draws too
  * close to the current position so every jump reads as a real re-aim rather than an imperceptible
  * nudge.
  */
@@ -1442,7 +1446,7 @@ function pickJumpOffset(current: number): number {
 }
 
 /**
- * Resolves a target's current x/restY (dynamic, from cupMotionRef, when Phase 8's cupMotion is
+ * Resolves a target's current x/restY (dynamic, from cupMotionRef, when Phase 3's cupMotion is
  * active; otherwise the static level.targets position, byte-identical to every pre-Phase-8 level)
  * and whether it's currently "closed" — tilted past CUP_SETTLE_TILT_LIMIT_DEG, so it can't hold or
  * newly catch a ball this frame. Shared by computeSettledBalls/computeSettledSinkers so both agree
@@ -1494,7 +1498,7 @@ function computeSettledBalls(
 }
 
 /**
- * Phase 5's sinker ball: same settle math as computeSettledBalls, filtered to the 'sinker-'
+ * The sinker ball hazard: same settle math as computeSettledBalls, filtered to the 'sinker-'
  * prefix instead of 'ball-'. Kept as its own small function rather than generalizing
  * computeSettledBalls with a filter parameter, to avoid touching the win-condition-critical
  * function that every other mechanic already depends on. Used only for the warning haptic —
@@ -1588,11 +1592,11 @@ function checkTargets(
 }
 
 /**
- * Phase 4's chain-match bonus: for each group in level.matchRows, if every cup in the group
- * currently holds a settled ball AND those balls all share the same color, spawn a bonus (see
- * triggerBonus) at the group's middle cup. Each group can only fire once per level instance
- * (tracked via matchedRowsRef) so a match that stays formed doesn't spam bonuses every frame.
- * No-op when the level has no chainMatchBonus/matchRows.
+ * The chain-match bonus (currently unused by any level): for each group in level.matchRows, if
+ * every cup in the group currently holds a settled ball AND those balls all share the same
+ * color, spawn a bonus (see triggerBonus) at the group's middle cup. Each group can only fire
+ * once per level instance (tracked via matchedRowsRef) so a match that stays formed doesn't spam
+ * bonuses every frame. No-op when the level has no chainMatchBonus/matchRows.
  */
 function checkChainMatches(
   level: LevelConfig,
@@ -1622,10 +1626,11 @@ function checkChainMatches(
 }
 
 /**
- * Phase 4's bonus reward, shared by chain matches and the rainbow cup: spawns one extra playable
- * ball at the ramp's low point (same body setup as the initial spawn, via ballBodyOptions, so it
- * behaves identically to a normal ball — a genuinely useful extra chance, not just a visual prop),
- * plays a chime, and bursts a few celebratory bubbles at the match/cup location.
+ * The bonus reward shared by chain matches and the rainbow cup (both currently unused, so this
+ * function has no active caller): spawns one extra playable ball at the ramp's low point (same
+ * body setup as the initial spawn, via ballBodyOptions, so it behaves identically to a normal
+ * ball — a genuinely useful extra chance, not just a visual prop), plays a chime, and bursts a
+ * few celebratory bubbles at the match/cup location.
  */
 function triggerBonus(pw: PhysicsWorld, level: LevelConfig, x: number, y: number, rampLowX: number, rampLowY: number) {
   const color = level.ballColors[Math.floor(Math.random() * level.ballColors.length)];
@@ -1636,7 +1641,7 @@ function triggerBonus(pw: PhysicsWorld, level: LevelConfig, x: number, y: number
 }
 
 /**
- * Phase 6's golden-ball bonus: once (per level instance — tracked via goldenTriggeredRef) a ball
+ * The golden-ball bonus (currently unused): once (per level instance — tracked via goldenTriggeredRef) a ball
  * whose color is GOLD_COLOR is found settled in any target, auto-fills a random other currently-
  * *empty* target by spawning a new ball body positioned exactly at that target's rest position
  * with zero velocity — the very next frame's normal settle check (computeSettledBalls) picks it
@@ -1697,7 +1702,7 @@ function updateComboMeter(
 }
 
 /**
- * Phase 9 Level 27's finale flourishes: reacts to the SAME newlyFilled landings and comboCountRef
+ * Phase 4 Level 12's finale flourishes: reacts to the SAME newlyFilled landings and comboCountRef
  * that updateComboMeter just updated, rather than re-deriving landing detection. No-op when there
  * was no landing this frame. Plays a combo-pitched note on every landing; fires a brief screen
  * jitter once per newly-crossed multiple of SHAKE_COMBO_STEP (edge-detected via
@@ -1723,7 +1728,7 @@ function triggerFinaleEffects(
 }
 
 /**
- * Phase 4 Level 12's rainbow bonus cup: cycles a random currently-unfilled target as "active"
+ * The rainbow bonus cup (currently unused): cycles a random currently-unfilled target as "active"
  * (rendered with a rainbow ring) for RAINBOW_VISIBLE_MS at a time, RAINBOW_APPEAR_INTERVAL_MS
  * apart. Landing any ball in the active target while it's up triggers a bonus (see triggerBonus)
  * and immediately hides it; otherwise it hides on its own after its window expires. Returns the

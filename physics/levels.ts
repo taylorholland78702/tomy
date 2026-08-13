@@ -30,9 +30,10 @@ export interface GearConfig {
 }
 
 /**
- * Trench's periodic gate: a wall segment that toggles between blocking and passable on a
- * repeating cycle (see createGate/setGateOpen in physics/engine.ts). Forces the player to time a
- * shot through the open window rather than just aim.
+ * A periodic gate: a wall segment that toggles between blocking and passable on a repeating
+ * cycle (see createGate/setGateOpen in physics/engine.ts). Forces the player to time a shot
+ * through the open window rather than just aim. Currently unused by any level (its debut level
+ * was part of the Trench zone, removed along with Phases 5-7).
  */
 export interface GateConfig {
   id: string;
@@ -64,9 +65,10 @@ export interface GeyserConfig {
 }
 
 /**
- * Trench's crumbling peg: a normal-looking peg (see createCrumblingPeg in physics/engine.ts) that
+ * A crumbling peg: a normal-looking peg (see createCrumblingPeg in physics/engine.ts) that
  * breaks and disappears after hitsToBreak ball hits, detected via a matter-js collisionStart
- * handler - the first mechanic in this codebase to use collision events.
+ * handler. Currently unused by any level (its debut level was part of the Trench zone, removed
+ * along with Phases 5-7).
  */
 export interface CrumblingPegConfig {
   id: string;
@@ -100,13 +102,8 @@ export interface PhaseConfig {
 export const PHASES: PhaseConfig[] = [
   { id: 1, name: 'Foundations' },
   { id: 2, name: 'The Clock' },
-  { id: 3, name: 'Moving Target' },
-  { id: 4, name: 'Chain Reaction' },
-  { id: 5, name: 'Undertow' },
-  { id: 6, name: 'Bonus Tokens' },
-  { id: 7, name: 'Split Stream' },
-  { id: 8, name: 'Full Tilt' },
-  { id: 9, name: 'Waterfuls Unleashed' },
+  { id: 3, name: 'Full Tilt' },
+  { id: 4, name: 'Waterfuls Unleashed' },
 ];
 
 export interface WaterPalette {
@@ -128,23 +125,18 @@ export interface ZoneConfig {
 const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: '#0B5C8A' };
 
 /**
- * The ocean-journey framing over the existing 9 Phases: two Phases per zone, grouped by where
- * they already fit thematically (Undertow's current/rising-water suits Open Ocean; the finale
- * suits Sunken Ship as a climax) rather than by renumbering any mechanic. All five zones now have
- * their own water palette, each darker/more saturated than the last as the "journey" descends:
- * Tide Pool (pale foam -> bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise ->
- * deeper reef teal), Open Ocean (dim steel blue -> deep navy -> near-black, sparse per its "harder
- * because you can see less" brief), Trench (deep abyssal purple fading to near-black, the darkest
- * zone), and Sunken Ship (murky wreck green, distinct from Trench's cold purple-black — a hint of
- * decay rather than pure depth). DEFAULT_PALETTE now only backs levels that predate the zone
- * system in tests/tooling, not any live zone.
+ * The ocean-journey framing over the game's 4 Phases. Tide Pool and Reef each get their own
+ * Phase; Sunken Ship spans both finale Phases as the climax. Open Ocean and Trench (previously
+ * Phases 4-7 of a 9-Phase game) were removed along with those phases. Tide Pool (pale foam ->
+ * bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise -> deeper reef teal),
+ * and Sunken Ship (murky wreck green, a hint of decay rather than pure depth) each keep their own
+ * water palette. DEFAULT_PALETTE now only backs levels that predate the zone system in
+ * tests/tooling, not any live zone.
  */
 export const ZONES: ZoneConfig[] = [
   { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
-  { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
-  { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: { top: '#3A5A78', mid: '#1C3A56', bottom: '#081826' } },
-  { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: { top: '#1A1830', mid: '#0D0B1A', bottom: '#020108' } },
-  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: { top: '#2A3B35', mid: '#16241F', bottom: '#0A120F' } },
+  { id: 'reef', name: 'Reef', phaseIds: [2], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
+  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [3, 4], palette: { top: '#2A3B35', mid: '#16241F', bottom: '#0A120F' } },
 ];
 
 export function zoneForPhase(phaseId: number): ZoneConfig {
@@ -165,11 +157,11 @@ export interface LevelConfig {
   pegs: PegConfig[];
   /** Reef's rotating-gear obstacle (see GearConfig). Undefined = no gears, i.e. every level so far. */
   gears?: GearConfig[];
-  /** Trench's periodic gate obstacle (see GateConfig). */
+  /** Periodic gate obstacle (see GateConfig). Currently unused by any level. */
   gates?: GateConfig[];
   /** Sunken Ship's periodic geyser obstacle (see GeyserConfig). */
   geysers?: GeyserConfig[];
-  /** Trench's crumbling peg obstacle (see CrumblingPegConfig). */
+  /** Crumbling peg obstacle (see CrumblingPegConfig). Currently unused by any level. */
   crumblingPegs?: CrumblingPegConfig[];
   /** Sunken Ship's portal pair obstacle (see PortalConfig). */
   portals?: PortalConfig[];
@@ -184,77 +176,81 @@ export interface LevelConfig {
    */
   levelTimerMs?: number;
   /**
-   * Phase 3's "moving target" mechanic: 'drift' slowly sways the Air Jet button left-right,
-   * 'jump' teleports it to a new spot after every release, 'twin' keeps 'jump' behavior on the
-   * primary button and adds a second temporary button on the opposite side. Undefined = button
-   * stays centered, i.e. every Phase 1/2 level, unchanged from the original design.
+   * The "moving target" mechanic: 'drift' slowly sways the Air Jet button left-right, 'jump'
+   * teleports it to a new spot after every release, 'twin' keeps 'jump' behavior on the primary
+   * button and adds a second temporary button on the opposite side. Currently only used by the
+   * finale Phase's 'drift' variant, layered alongside its other hazards. Undefined = button stays
+   * centered, i.e. every level outside the finale.
    */
   buttonMotion?: 'drift' | 'jump' | 'twin';
   /**
-   * Phase 4's "chain reaction" mechanic: groups of target ids (see TOP_ROW etc.) that count as a
-   * same-row match when every cup in the group holds a settled ball AND all those balls share the
-   * same color. Only meaningful when chainMatchBonus is also set.
+   * Groups of target ids (see TOP_ROW etc.) that count as a same-row match when every cup in the
+   * group holds a settled ball AND all those balls share the same color. Only meaningful when
+   * chainMatchBonus is also set. Currently unused by any level.
    */
   matchRows?: string[][];
-  /** Landing all of a matchRows group with matching colors spawns a bonus ball + chime once per group. */
+  /** Landing all of a matchRows group with matching colors spawns a bonus ball + chime once per group. Currently unused by any level. */
   chainMatchBonus?: boolean;
-  /** Enables the combo meter: quick consecutive landings build a streak that decays if you pause. */
+  /** Enables the combo meter: quick consecutive landings build a streak that decays if you pause. Used by the finale Phase. */
   comboMeter?: boolean;
-  /** Enables the temporary bonus cup that cycles between random unfilled targets. */
+  /** Enables the temporary bonus cup that cycles between random unfilled targets. Currently unused by any level. */
   rainbowCup?: boolean;
-  /** Phase 5's hazard mechanic: a gentle, continuously-oscillating sideways force on every ball. */
+  /** Hazard mechanic: a gentle, continuously-oscillating sideways force on every ball. Used by Phase 3's mastery level and throughout the finale Phase. */
   sideCurrent?: boolean;
   /**
-   * Phase 5's hazard mechanic: this many of the level's balls are "sinkers" — dull-colored balls
-   * that can physically occupy a cup but never count toward filling it (they get a 'sinker-'
-   * label instead of 'ball-', which every win-condition/settle check already filters on).
+   * Hazard mechanic: this many of the level's balls are "sinkers" — dull-colored balls that can
+   * physically occupy a cup but never count toward filling it (they get a 'sinker-' label instead
+   * of 'ball-', which every win-condition/settle check already filters on). Used by Phase 3's
+   * mastery level.
    */
   sinkerCount?: number;
-  /** Phase 5's hazard mechanic: the ramp gradually rises toward the fixed cups over the level. */
+  /** Hazard mechanic: the ramp gradually rises toward the fixed cups over the level. Currently unused by any level. */
   risingWater?: boolean;
   /**
-   * Phase 6's power-up mechanic: this many balls are "golden" — same as a normal ball (counts
-   * toward filling its own cup), but landing one auto-fills a random other empty cup once per
-   * level instance.
+   * Power-up mechanic: this many balls are "golden" — same as a normal ball (counts toward
+   * filling its own cup), but landing one auto-fills a random other empty cup once per level
+   * instance. Currently unused by any level.
    */
   goldenCount?: number;
   /**
-   * Phase 6's power-up mechanic: this many balls are "magnets" — same as a normal ball, but while
-   * still floating (not yet settled) it pulls other floating balls toward it.
+   * Power-up mechanic: this many balls are "magnets" — same as a normal ball, but while still
+   * floating (not yet settled) it pulls other floating balls toward it. Currently unused by any
+   * level.
    */
   magnetCount?: number;
-  /** Phase 6's power-up mechanic: holding the button past a threshold before releasing adds a one-time power burst on release. */
+  /** Power-up mechanic: holding the button past a threshold before releasing adds a one-time power burst on release. Currently unused by any level. */
   chargeableJet?: boolean;
   /**
-   * Phase 7's "split stream" mechanic: one evolving control scheme (like buttonMotion), not
-   * independent flags — 'basic' splits the single button into two, each hard-restricted to only
-   * launching balls on its own half; 'centerBurst' keeps that and adds a strong center burst when
-   * both buttons are held together; 'swipe' keeps both and adds drag-to-angle on each button.
+   * The "split stream" mechanic: one evolving control scheme (like buttonMotion), not independent
+   * flags — 'basic' splits the single button into two, each hard-restricted to only launching
+   * balls on its own half; 'centerBurst' keeps that and adds a strong center burst when both
+   * buttons are held together; 'swipe' keeps both and adds drag-to-angle on each button.
+   * Currently unused by any level.
    */
   splitButtons?: 'basic' | 'centerBurst' | 'swipe';
   /**
-   * Phase 8's "full tilt" mechanic: one evolving control scheme (like buttonMotion/splitButtons) —
+   * Phase 3's "full tilt" mechanic: one evolving control scheme (like buttonMotion/splitButtons) —
    * 'sway' gently drifts every cup side-to-side, out of phase with each other; 'tilt' keeps cups
    * still but periodically rotates each one shut on its own cycle (independent per cup), so a ball
    * can't land while it's closed past a threshold tilt and an already-settled ball gets physically
    * displaced as the wall rotates; 'full' runs both sway and tilt simultaneously. Undefined = cups
-   * stay perfectly still, i.e. every Phase 1-7 level, unchanged from the original design.
+   * stay perfectly still, i.e. every level outside Phase 3 and the finale.
    */
   cupMotion?: 'sway' | 'tilt' | 'full';
   /**
-   * Phase 9 Level 26's "raise the pace" mechanic: scales every existing time-based mechanic this
+   * Phase 4 Level 11's "raise the pace" mechanic: scales every existing time-based mechanic this
    * level also enables (sideCurrent's oscillation period, cupMotion's tilt cycle) uniformly
    * faster. A plain multiplier rather than duplicate period constants, so it composes with
-   * whichever Phase 5/8 flags this level already turns on without touching the shared module-level
-   * constants those flags use for every other level. Undefined = 1 (no change), i.e. every
-   * Phase 1-8 level, unchanged from the original design.
+   * whichever flags this level already turns on without touching the shared module-level
+   * constants those flags use for every other level. Undefined = 1 (no change), i.e. every level
+   * outside Levels 11-12.
    */
   paceMultiplier?: number;
   /**
-   * Phase 9 Level 27's finale mechanic: gates the combo-driven audio/visual flourishes (rising
+   * Phase 4 Level 12's finale mechanic: gates the combo-driven audio/visual flourishes (rising
    * landing-note pitch/volume, tank hue tint, threshold screen-shake). Kept separate from
    * comboMeter itself, since comboMeter's existing semantics are purely about tracking the combo
-   * counter/window — every earlier comboMeter level (11, 12) must keep rendering only the plain
+   * counter/window — every earlier comboMeter level (10, 11) must keep rendering only the plain
    * "Combo x N" pill with no side effects. Undefined = no finale effects, i.e. every other level.
    */
   finaleEffects?: boolean;
@@ -266,10 +262,10 @@ export interface LevelConfig {
    * negative engine.gravity.y — see FORWARD_TILT_EJECT_GRAVITY_Y in GameCanvas.tsx), which releases
    * every currently-locked ball in the level back to normal physics at once.
    *
-   * Only set on Phases 1-4 and 6-7 (ids 1-12, 16-21) — phases whose hazard doesn't depend on being
-   * able to dislodge an already-settled ball. Undefined (Phases 5, 8, 9 — ids 13-15, 22-24, 25-27,
-   * unchanged) keeps the original applyCupRetention spring-only behavior, so side current and cup
-   * sway/tilt can still walk a settled ball back out exactly as before.
+   * Only set on Phases 1-2 (ids 1-6) — phases whose hazard doesn't depend on being able to
+   * dislodge an already-settled ball. Undefined (Phases 3-4 — ids 7-12) keeps the original
+   * applyCupRetention spring-only behavior, so side current and cup sway/tilt can still walk a
+   * settled ball back out exactly as before.
    */
   stickyRetention?: boolean;
 }
@@ -316,7 +312,7 @@ const PEGS_ROW_2: PegConfig[] = [
 export const LEVELS: LevelConfig[] = [
   {
     id: 'level-1',
-    // See LevelConfig.stickyRetention — Phases 1-4/6-7 lock settled balls permanently.
+    // See LevelConfig.stickyRetention — Phases 1-2 lock settled balls permanently.
     stickyRetention: true,
     phase: 1,
     levelInPhase: 1,
@@ -425,272 +421,7 @@ export const LEVELS: LevelConfig[] = [
   },
   {
     id: 'level-7',
-    stickyRetention: true,
     phase: 3,
-    levelInPhase: 1,
-    type: 'baskets',
-    name: 'Drifting Aim',
-    challenge: "The button won't sit still.",
-    targets: TOP_ROW,
-    pegs: [],
-    // Same layout as level-4 (identical targets/pegs) — gears mirror it exactly.
-    gears: [
-      { id: 'gear-1', dx: -70, y: 210, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
-      { id: 'gear-2', dx: 70, y: 210, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
-    ],
-    ballCount: 3,
-    ballColors: BALL_PALETTE,
-    buttonMotion: 'drift',
-  },
-  {
-    id: 'level-8',
-    stickyRetention: true,
-    phase: 3,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Jumping Aim',
-    challenge: 'It teleports after every shot.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
-    // Same layout as level-5 — gears mirror it exactly.
-    gears: [
-      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
-      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
-    ],
-    ballCount: 6,
-    ballColors: BALL_PALETTE,
-    buttonMotion: 'jump',
-  },
-  {
-    id: 'level-9',
-    stickyRetention: true,
-    phase: 3,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Double Trouble',
-    challenge: 'A second button appears — briefly.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    // Same layout as level-6 (mastery checkpoint) — gears mirror it exactly.
-    gears: [
-      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
-      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
-      { id: 'gear-3', dx: -110, y: 280, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
-      { id: 'gear-4', dx: 110, y: 280, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
-    ],
-    ballCount: 9,
-    ballColors: BALL_PALETTE,
-    buttonMotion: 'twin',
-  },
-  {
-    id: 'level-10',
-    stickyRetention: true,
-    phase: 4,
-    levelInPhase: 1,
-    type: 'baskets',
-    name: 'Chain Bonus',
-    challenge: "Match a row's colors for a bonus.",
-    targets: TOP_ROW,
-    pegs: [],
-    ballCount: 3,
-    // All three balls share a color so the very first completion always fires the chain-match
-    // bonus — a guaranteed, unmistakable intro to the mechanic before later levels make it merely
-    // possible rather than automatic.
-    ballColors: [BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[0]],
-    matchRows: [['t1', 't2', 't3']],
-    chainMatchBonus: true,
-  },
-  {
-    id: 'level-11',
-    stickyRetention: true,
-    phase: 4,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Combo Streak',
-    challenge: 'Land fast to keep the streak alive.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
-    ballCount: 6,
-    // One color repeated 3x keeps a chain match achievable (not guaranteed) alongside the new
-    // combo mechanic, rather than the six fully-distinct colors every other 6-ball level uses.
-    ballColors: [BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[0], BALL_PALETTE[1], BALL_PALETTE[2], BALL_PALETTE[3]],
-    matchRows: [
-      ['t1', 't2', 't3'],
-      ['t4', 't5', 't6'],
-    ],
-    chainMatchBonus: true,
-    comboMeter: true,
-  },
-  {
-    id: 'level-12',
-    stickyRetention: true,
-    phase: 4,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Rainbow Rush',
-    challenge: 'Catch the bonus cup before it moves on.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    ballCount: 9,
-    ballColors: BALL_PALETTE,
-    matchRows: [
-      ['t1', 't2', 't3'],
-      ['t4', 't5', 't6'],
-      ['t7', 't8', 't9'],
-    ],
-    chainMatchBonus: true,
-    comboMeter: true,
-    rainbowCup: true,
-  },
-  {
-    id: 'level-13',
-    phase: 5,
-    levelInPhase: 1,
-    type: 'baskets',
-    name: 'Side Current',
-    challenge: 'A sideways pull keeps shifting.',
-    targets: TOP_ROW,
-    pegs: [],
-    ballCount: 3,
-    ballColors: BALL_PALETTE,
-    sideCurrent: true,
-  },
-  {
-    id: 'level-14',
-    phase: 5,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Sinker Ball',
-    challenge: 'One ball never counts.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
-    // 6 cups + 1 sinker (which never counts toward filling a cup) needs 7 balls total, not 6 —
-    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
-    ballCount: 7,
-    ballColors: BALL_PALETTE,
-    sinkerCount: 1,
-  },
-  {
-    id: 'level-15',
-    phase: 5,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Full Undertow',
-    challenge: 'Current, sinker, and a rising floor.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    // 9 cups + 1 sinker (which never counts toward filling a cup) needs 10 balls total, not 9 —
-    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
-    // BALL_PALETTE only has 9 entries, so append one more repeated color for the 10th ball.
-    ballCount: 10,
-    ballColors: [...BALL_PALETTE, BALL_PALETTE[0]],
-    // Combines both earlier Phase 5 mechanics and adds the rising floor, per the phase's own
-    // design text ("Level 3 combines both and adds...") — unlike Phases 2-4, this phase is
-    // cumulative by design.
-    sideCurrent: true,
-    sinkerCount: 1,
-    risingWater: true,
-  },
-  {
-    id: 'level-16',
-    stickyRetention: true,
-    phase: 6,
-    levelInPhase: 1,
-    type: 'baskets',
-    name: 'Golden Ball',
-    challenge: 'One ball fills a second cup for free.',
-    targets: TOP_ROW,
-    pegs: [],
-    ballCount: 3,
-    ballColors: BALL_PALETTE,
-    goldenCount: 1,
-  },
-  {
-    id: 'level-17',
-    stickyRetention: true,
-    phase: 6,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Magnet Ball',
-    challenge: 'It pulls nearby balls in mid-air.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
-    ballCount: 6,
-    ballColors: BALL_PALETTE,
-    magnetCount: 1,
-  },
-  {
-    id: 'level-18',
-    stickyRetention: true,
-    phase: 6,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Charged Bubble',
-    challenge: 'Hold the button to charge a power shot.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    ballCount: 9,
-    ballColors: BALL_PALETTE,
-    chargeableJet: true,
-  },
-  {
-    id: 'level-19',
-    stickyRetention: true,
-    phase: 7,
-    levelInPhase: 1,
-    type: 'baskets',
-    name: 'Split Stream',
-    challenge: 'Two buttons, each covers half the board.',
-    targets: TOP_ROW,
-    pegs: [],
-    // Trench's debut obstacle: one gate per split channel, out of phase with each other, so
-    // "time each independent stream" now means timing past a gate too, not just aiming.
-    // First-pass placement/timing, not tuned against real playtest data.
-    gates: [
-      { id: 'gate-1', dx: -55, y: 210, width: 70, height: 10, openMs: 1200, closedMs: 800 },
-      { id: 'gate-2', dx: 55, y: 210, width: 70, height: 10, openMs: 1200, closedMs: 800, phaseOffsetMs: 1000 },
-    ],
-    ballCount: 3,
-    ballColors: BALL_PALETTE,
-    splitButtons: 'basic',
-  },
-  {
-    id: 'level-20',
-    stickyRetention: true,
-    phase: 7,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Center Clear',
-    challenge: 'Press both together to reach the middle.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: [],
-    // Trench's debut obstacle: the level's old PEGS_ROW_1 pegs, same positions, now breakable.
-    // First-pass hit count, not tuned against real playtest data.
-    crumblingPegs: [
-      { id: 'crumble-1', dx: -55, y: 185, radius: 6, hitsToBreak: 3 },
-      { id: 'crumble-2', dx: 55, y: 185, radius: 6, hitsToBreak: 3 },
-    ],
-    ballCount: 6,
-    ballColors: BALL_PALETTE,
-    splitButtons: 'centerBurst',
-  },
-  {
-    id: 'level-21',
-    stickyRetention: true,
-    phase: 7,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Angled Stream',
-    challenge: 'Drag while holding to angle your shot.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    ballCount: 9,
-    ballColors: BALL_PALETTE,
-    splitButtons: 'swipe',
-  },
-  {
-    id: 'level-22',
-    phase: 8,
     levelInPhase: 1,
     type: 'baskets',
     name: 'Gentle Sway',
@@ -707,8 +438,8 @@ export const LEVELS: LevelConfig[] = [
     cupMotion: 'sway',
   },
   {
-    id: 'level-23',
-    phase: 8,
+    id: 'level-8',
+    phase: 3,
     levelInPhase: 2,
     type: 'baskets',
     name: 'Closing Time',
@@ -724,8 +455,8 @@ export const LEVELS: LevelConfig[] = [
     cupMotion: 'tilt',
   },
   {
-    id: 'level-24',
-    phase: 8,
+    id: 'level-9',
+    phase: 3,
     levelInPhase: 3,
     type: 'baskets',
     name: 'Full Tilt',
@@ -737,15 +468,16 @@ export const LEVELS: LevelConfig[] = [
     // BALL_PALETTE only has 9 entries, so append one more repeated color for the 10th ball.
     ballCount: 10,
     ballColors: [...BALL_PALETTE, BALL_PALETTE[0]],
-    // Combines both of Phase 8's own mechanics with Phase 5's current + sinker hazards, per the
-    // phase's own "everything at once" mastery-checkpoint design (mirrors level-15's Full Undertow).
+    // Combines this phase's own sway/tilt mechanics with a sideways current and a sinker ball for
+    // a genuine everything-at-once mastery checkpoint — the hardest level in the phase for a
+    // reason.
     cupMotion: 'full',
     sideCurrent: true,
     sinkerCount: 1,
   },
   {
-    id: 'level-25',
-    phase: 9,
+    id: 'level-10',
+    phase: 4,
     levelInPhase: 1,
     type: 'baskets',
     name: 'Highlight Reel',
@@ -754,17 +486,16 @@ export const LEVELS: LevelConfig[] = [
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    // A short "greatest hits" remix: Phase 3's drifting button (aim challenge) + Phase 5's side
-    // current (in-flight hazard) + Phase 4's combo meter (rewards fast, confident play against
-    // both) — three earlier mechanics stacked on the smallest board, reading as a preview of
-    // everything still to come rather than a new mechanic of its own. Pure data reuse.
+    // Opens the finale with everything it's about to demand at once: a drifting aim (the button
+    // won't sit still), a sideways current (an in-flight hazard), and the combo meter (rewards
+    // fast, confident play against both) — three hazards stacked on the smallest board.
     buttonMotion: 'drift',
     sideCurrent: true,
     comboMeter: true,
   },
   {
-    id: 'level-26',
-    phase: 9,
+    id: 'level-11',
+    phase: 4,
     levelInPhase: 2,
     type: 'baskets',
     name: 'Full Speed',
@@ -773,11 +504,11 @@ export const LEVELS: LevelConfig[] = [
     pegs: PEGS_ROW_1,
     ballCount: 6,
     ballColors: BALL_PALETTE,
-    // Same remix ingredients as Level 25 plus Phase 8's tilt, all sped up via paceMultiplier:
-    // faster current oscillation, quicker cup tilt cycles, and now a tighter shared clock —
-    // "everything from Level 25, but urgent." levelTimerMs is level-4's 15s + 5s/ball formula
-    // (45s for 6 balls) divided by paceMultiplier, same as every other timed mechanic this level
-    // scales — first-pass estimate, not tuned against real playtest data.
+    // Same ingredients as Level 10 plus cup tilt, all sped up via paceMultiplier: faster current
+    // oscillation, quicker cup tilt cycles, and now a tighter shared clock — "everything from
+    // Level 10, but urgent." levelTimerMs is Level 4's 15s + 5s/ball formula (45s for 6 balls)
+    // divided by paceMultiplier, same as every other timed mechanic this level scales —
+    // first-pass estimate, not tuned against real playtest data.
     buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'tilt',
@@ -786,8 +517,8 @@ export const LEVELS: LevelConfig[] = [
     paceMultiplier: 1.6,
   },
   {
-    id: 'level-27',
-    phase: 9,
+    id: 'level-12',
+    phase: 4,
     levelInPhase: 3,
     type: 'baskets',
     name: 'Waterfuls Unleashed',
@@ -798,7 +529,7 @@ export const LEVELS: LevelConfig[] = [
     ballColors: BALL_PALETTE,
     // The set-piece finale: full remix + full pace + the lightweight combo-reactive flourishes
     // (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx). levelTimerMs: see
-    // Level 26's comment - same formula (60s for 9 balls) divided by paceMultiplier.
+    // Level 11's comment - same formula (60s for 9 balls) divided by paceMultiplier.
     buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'full',

@@ -6,7 +6,7 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 
 interface Props {
   levelName: string;
-  /** True only after the last level (27) - shows a different headline/CTA, no auto-advance target. */
+  /** True only after the last level (12) - shows a different headline/CTA, no auto-advance target. */
   isFinal: boolean;
   onContinue: () => void;
 }

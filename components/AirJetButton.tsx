@@ -5,22 +5,23 @@ import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
 interface Props {
   onHoldChange: (active: boolean) => void;
-  /** Horizontal shift from center, in px — Phase 3's moving-target mechanic. Defaults to centered. */
+  /** Horizontal shift from center, in px — the moving-target mechanic. Defaults to centered. */
   offsetX?: number;
   /**
-   * 'ghost' styles this as Phase 3 Level 3's temporary second button (a subtle amber ring) so it
-   * reads as "act now, this won't stay" next to the permanent primary button.
+   * 'ghost' styles this as the 'twin' buttonMotion variant's temporary second button (currently
+   * unused; a subtle amber ring) so it reads as "act now, this won't stay" next to the permanent
+   * primary button.
    */
   variant?: 'primary' | 'ghost';
-  /** Phase 6 Level 18: true once a held press has passed the charge threshold — a warm gold ring signals "ready to release for a power burst". */
+  /** The chargeable jet mechanic (currently unused): true once a held press has passed the charge threshold — a warm gold ring signals "ready to release for a power burst". */
   charging?: boolean;
-  /** Phase 7 Level 21: track horizontal drag while held instead of a plain Pressable, so the player can angle a launch. */
+  /** The swipe-to-angle mechanic (currently unused): track horizontal drag while held instead of a plain Pressable, so the player can angle a launch. */
   swipeEnabled?: boolean;
-  /** Phase 7 Level 21: horizontal drag distance from the touch-start point, continuously while held; called with 0 on release so every new press starts straight. */
+  /** The swipe-to-angle mechanic (currently unused): horizontal drag distance from the touch-start point, continuously while held; called with 0 on release so every new press starts straight. */
   onSwipeAngle?: (dx: number) => void;
 }
 
-/** Phase 7 Level 21: how far a drag can bias the launch, px, before clamping. */
+/** The swipe-to-angle mechanic (currently unused): how far a drag can bias the launch, px, before clamping. */
 const SWIPE_MAX_OFFSET = 50;
 
 const BUTTON_SIZE = 57;
@@ -65,8 +66,8 @@ export function AirJetButton({
     onSwipeAngle?.(0); // every new press starts straight, not wherever the last drag left off
   };
 
-  // Only built/used when swipeEnabled — Phase 1-6 buttons keep the plain Pressable below
-  // untouched, so this adds zero risk to every level that isn't Phase 7 Level 21.
+  // Only built/used when swipeEnabled — every other level's button keeps the plain Pressable
+  // below untouched, since no level currently sets splitButtons:'swipe'.
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,

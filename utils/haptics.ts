@@ -15,7 +15,7 @@ export function hapticLanding() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 }
 
-/** Distinct "uh-oh" cue when Phase 5's sinker ball lands in a cup (it never counts toward filling it). */
+/** Distinct "uh-oh" cue when the sinker ball lands in a cup (it never counts toward filling it). */
 export function hapticSinkerWarning() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 }

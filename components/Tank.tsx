@@ -13,9 +13,9 @@ const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: 
 interface Props {
   width: number;
   height: number;
-  /** Phase 9 Level 27's finale: an HSL hue (0-360) tinting the tank as the combo climbs, via a
+  /** Phase 4 Level 12's finale: an HSL hue (0-360) tinting the tank as the combo climbs, via a
    *  third additive overlay rather than rewriting the water gradient's own stops. Undefined = no
-   *  tint overlay, i.e. every level except Level 27. */
+   *  tint overlay, i.e. every level except Level 12. */
   tintHue?: number;
   /** Per-zone water-gradient colors (see ZoneConfig in physics/levels.ts). Defaults to today's look. */
   palette?: WaterPalette;

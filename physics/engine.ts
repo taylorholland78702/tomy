@@ -239,13 +239,13 @@ export function createCup(world: Matter.World, x: number, y: number, id: string)
   return { segments, restY: y + (CUP_RADIUS - thickness / 2 - BALL_RADIUS) };
 }
 
-/** Phase 8: rigidly translates every wall segment of a cup by the same incremental delta — used for the sway mechanic. */
+/** Phase 3: rigidly translates every wall segment of a cup by the same incremental delta — used for the sway mechanic. */
 export function translateCup(segments: Matter.Body[], deltaX: number, deltaY: number = 0) {
   for (const seg of segments) Matter.Body.translate(seg, { x: deltaX, y: deltaY });
 }
 
 /**
- * Phase 8: rigidly rotates every wall segment of a cup around a shared pivot by an incremental
+ * Phase 3: rigidly rotates every wall segment of a cup around a shared pivot by an incremental
  * delta (like translateCup, not an absolute angle) — used for the tilt mechanic. The pivot should
  * be the cup's own circle center (the (x, y) originally passed to createCup), so all segments
  * revolve together as one tilted bowl rather than spinning individually in place.
@@ -331,10 +331,11 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 }
 
 /**
- * Phase 5's "Undertow" hazard: a directional (not random, unlike applyWaterPhysics's turbulence)
- * mass-scaled sideways force applied to every submerged body. `strength` is expected to already be
- * signed and oscillating (the caller drives it with a sine wave over time — see GameCanvas.tsx) so
- * this function itself stays a simple, reusable constant push rather than owning any timing logic.
+ * The side-current hazard (used by Phase 3's mastery level and the finale): a directional (not
+ * random, unlike applyWaterPhysics's turbulence) mass-scaled sideways force applied to every
+ * submerged body. `strength` is expected to already be signed and oscillating (the caller drives
+ * it with a sine wave over time — see GameCanvas.tsx) so this function itself stays a simple,
+ * reusable constant push rather than owning any timing logic.
  */
 export function applyCurrent(bodies: Matter.Body[], strength: number) {
   for (const body of bodies) {
@@ -344,7 +345,7 @@ export function applyCurrent(bodies: Matter.Body[], strength: number) {
 }
 
 /**
- * Phase 6's magnet-ball power-up: pulls every other ball within `radius` of `magnetBody` toward
+ * The magnet-ball power-up (currently unused): pulls every other ball within `radius` of `magnetBody` toward
  * it, falling off linearly with distance (so balls right next to the magnet feel a strong tug,
  * balls near the edge of its range barely anything) — a small self-contained addition, not a
  * change to any existing force function. The caller only invokes this while the magnet ball
@@ -429,7 +430,7 @@ export function applyAirJet(
 
   for (const body of bodies) {
     if (body.isStatic) continue;
-    // Phase 7's split buttons: a hard boundary (not just the falloff below) so each button only
+    // The split buttons mechanic (currently unused): a hard boundary (not just the falloff below) so each button only
     // ever affects balls on its own half, however strong the press — the natural distance falloff
     // alone would let a strong-enough hold reach across the tank, undermining the "split" premise.
     if (clipX?.min !== undefined && body.position.x < clipX.min) continue;

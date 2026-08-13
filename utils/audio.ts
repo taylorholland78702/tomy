@@ -46,7 +46,7 @@ export function playCountdownTick(urgency: number) {
 }
 
 /**
- * Short celebratory chime for Phase 4's chain-match/rainbow-cup bonuses (see triggerBonus in
+ * Short celebratory chime for the chain-match/rainbow-cup bonuses (currently unused by any level; see triggerBonus in
  * GameCanvas.tsx). Two quick notes a major third apart, played back-to-back — same synthesis
  * approach and web-only/native-no-op split as playCountdownTick, just a distinct, brighter shape
  * so a "bonus" reads differently from the countdown's plain tick.
@@ -82,11 +82,11 @@ export function playBonusChime() {
   }
 }
 
-/** Phase 9 Level 27's finale: pitch/volume ceiling for playComboNote's mapping — see below. */
+/** Phase 4 Level 12's finale: pitch/volume ceiling for playComboNote's mapping — see below. */
 const COMBO_NOTE_MAX_COMBO = 12;
 
 /**
- * Landing note for Phase 9 Level 27's finale (see triggerFinaleEffects in GameCanvas.tsx). Reuses
+ * Landing note for Phase 4 Level 12's finale (see triggerFinaleEffects in GameCanvas.tsx). Reuses
  * playCountdownTick's urgency-style linear pitch/volume mapping, driven by the current combo count
  * instead of countdown urgency: comboCount is clamped to COMBO_NOTE_MAX_COMBO before mapping to
  * [0,1] so the pitch keeps climbing through a satisfying range but never screeches past it for
