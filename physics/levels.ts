@@ -69,13 +69,15 @@ const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: 
  * The ocean-journey framing over the existing 9 Phases: two Phases per zone, grouped by where
  * they already fit thematically (Undertow's current/rising-water suits Open Ocean; the finale
  * suits Sunken Ship as a climax) rather than by renumbering any mechanic. Tide Pool (pale foam ->
- * bright turquoise -> shallow teal) and Reef (warm coral -> vivid turquoise -> deeper reef teal)
- * have their own palettes so far; every zone past Reef is still DEFAULT_PALETTE until its own turn.
+ * bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise -> deeper reef teal), and
+ * Open Ocean (dim steel blue -> deep navy -> near-black, sparse and dark per its "harder because
+ * you can see less" brief) have their own palettes so far; every zone past Open Ocean is still
+ * DEFAULT_PALETTE until its own turn.
  */
 export const ZONES: ZoneConfig[] = [
   { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
   { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
-  { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: DEFAULT_PALETTE },
+  { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: { top: '#3A5A78', mid: '#1C3A56', bottom: '#081826' } },
   { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: DEFAULT_PALETTE },
   { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: DEFAULT_PALETTE },
 ];
