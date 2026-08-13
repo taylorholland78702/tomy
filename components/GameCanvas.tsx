@@ -31,7 +31,7 @@ import {
   COLLISION_CATEGORY_STATIC,
 } from '../physics/engine';
 import { useTiltGravity } from '../hooks/useTiltGravity';
-import { LevelConfig, TargetConfig } from '../physics/levels';
+import { LevelConfig, TargetConfig, zoneForPhase } from '../physics/levels';
 import { hapticLanding, hapticLevelComplete, hapticSinkerWarning, hapticJetPress } from '../utils/haptics';
 import { playCountdownTick, playBonusChime, playComboNote, playLandingNote } from '../utils/audio';
 
@@ -820,7 +820,12 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         transform: level.finaleEffects ? [{ translateX: shakeOffset.x }, { translateY: shakeOffset.y }] : undefined,
       }}
     >
-      <Tank width={width} height={height} tintHue={level.finaleEffects ? 200 + Math.min(comboCount, 12) * 12 : undefined} />
+      <Tank
+        width={width}
+        height={height}
+        tintHue={level.finaleEffects ? 200 + Math.min(comboCount, 12) * 12 : undefined}
+        palette={zoneForPhase(level.phase).palette}
+      />
       <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
           {/* Always include GOLD_COLOR/MAGNET_COLOR here (not just level.ballColors) — Phase 6's

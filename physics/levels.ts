@@ -32,6 +32,44 @@ export const PHASES: PhaseConfig[] = [
   { id: 9, name: 'Waterfuls Unleashed' },
 ];
 
+export interface WaterPalette {
+  /** Tank.tsx's water-gradient stop colors, offsets 0 / 0.4 / 1 respectively. */
+  top: string;
+  mid: string;
+  bottom: string;
+}
+
+export interface ZoneConfig {
+  id: string;
+  name: string;
+  /** Which Phases (see PHASES) this ocean zone spans. */
+  phaseIds: number[];
+  palette: WaterPalette;
+}
+
+/** Today's exact Tank.tsx water-gradient colors — every zone not yet given its own look uses this, so it renders pixel-identical to before this zone system existed. */
+const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: '#0B5C8A' };
+
+/**
+ * The ocean-journey framing over the existing 9 Phases: two Phases per zone, grouped by where
+ * they already fit thematically (Undertow's current/rising-water suits Open Ocean; the finale
+ * suits Sunken Ship as a climax) rather than by renumbering any mechanic. Only Tide Pool has its
+ * own palette so far — pale foam -> bright turquoise -> shallow teal, deliberately avoiding a dark
+ * bottom stop so it reads "shallow" once deeper zones get their own darker palettes in a later
+ * pass. Every other zone is DEFAULT_PALETTE until its own turn.
+ */
+export const ZONES: ZoneConfig[] = [
+  { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
+  { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: DEFAULT_PALETTE },
+  { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: DEFAULT_PALETTE },
+  { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: DEFAULT_PALETTE },
+  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: DEFAULT_PALETTE },
+];
+
+export function zoneForPhase(phaseId: number): ZoneConfig {
+  return ZONES.find((z) => z.phaseIds.includes(phaseId)) ?? ZONES[0];
+}
+
 export interface LevelConfig {
   id: string;
   /** Which Phase (mechanic umbrella) this level belongs to — see PHASES. */

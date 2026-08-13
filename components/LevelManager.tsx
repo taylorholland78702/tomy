@@ -2,12 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { GameCanvas } from './GameCanvas';
 import { LevelCompleteOverlay } from './LevelCompleteOverlay';
-import { LEVELS, PHASES } from '../physics/levels';
+import { LEVELS, zoneForPhase } from '../physics/levels';
 import { loadProgress, saveProgress } from '../utils/progress';
-
-function phaseName(phaseId: number): string {
-  return PHASES.find((p) => p.id === phaseId)?.name ?? '';
-}
 
 interface Completion {
   levelName: string;
@@ -67,7 +63,7 @@ export function LevelManager() {
       />
       <View style={styles.hud}>
         <Text style={styles.hudPhaseText}>
-          Phase {level.phase} · {phaseName(level.phase)}
+          {zoneForPhase(level.phase).name} · Phase {level.phase}
         </Text>
         <Text style={styles.hudText}>
           Level {level.levelInPhase} · {level.name}
