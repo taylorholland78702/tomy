@@ -170,6 +170,22 @@ export function setGateOpen(gate: Matter.Body, open: boolean) {
   gate.collisionFilter.mask = open ? 0 : COLLISION_CATEGORY_BALL;
 }
 
+/**
+ * Trench's crumbling peg: identical body to a normal peg (see createPeg above), but labeled
+ * distinctly so a collisionStart handler can recognize it and count hits toward breaking.
+ */
+export function createCrumblingPeg(world: Matter.World, x: number, y: number, radius: number, id: string) {
+  const peg = Matter.Bodies.circle(x, y, radius, {
+    isStatic: true,
+    restitution: 0.6,
+    friction: 0.4,
+    label: `crumble-peg-${id}`,
+    collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
+  });
+  Matter.World.add(world, peg);
+  return peg;
+}
+
 /** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */
 export const BALL_RADIUS = 13;
 /**

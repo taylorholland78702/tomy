@@ -12,6 +12,7 @@ import {
   rotateGear,
   createGate,
   setGateOpen,
+  createCrumblingPeg,
   createCup,
   translateCup,
   rotateCup,
@@ -213,6 +214,8 @@ const FORWARD_TILT_EJECT_GRAVITY_Y = -0.5;
 /** Countdown tick cadence range (ms) — calm with time to spare, urgent as the clock nears zero. */
 const TICK_INTERVAL_CALM_MS = 900;
 const TICK_INTERVAL_URGENT_MS = 200;
+/** Sunken Ship's portals: how long a ball is immune to re-teleporting right after landing on an exit. */
+const PORTAL_COOLDOWN_MS = 500;
 /**
  * Phase 3's moving-target mechanic: how far the Air Jet button can shift from center, px. Kept
  * well clear of the fixed Restart/tilt-permission buttons at the screen edges (see
@@ -337,6 +340,16 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const gearAngleRef = useRef<Map<string, number>>(new Map());
   /** Trench's periodic gates: gate id -> its physics body. */
   const gateBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
+  /** Trench's crumbling pegs: id -> its physics body, id -> hits so far, ids hit enough times but
+      not yet removed (drained in the Bucket-B tail, never inside the collisionStart handler - see
+      that handler's own comment for why), and ids permanently destroyed (render skips these). */
+  const crumblingPegBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
+  const crumblingPegHitsRef = useRef<Map<string, number>>(new Map());
+  const crumblingPegPendingRemovalRef = useRef<Set<string>>(new Set());
+  const crumblingPegDestroyedRef = useRef<Set<string>>(new Set());
+  /** Sunken Ship's portals: ball body id -> timestamp it becomes eligible for another teleport,
+      so landing on the exit doesn't immediately teleport it straight back. */
+  const portalCooldownRef = useRef<Map<number, number>>(new Map());
   /** Phase 9 Level 27's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
   const shakeOffsetRef = useRef({ x: 0, y: 0 });
   const shakeUntilRef = useRef(0);
@@ -359,6 +372,9 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   /** Trench's gates: ids currently open. Sunken Ship's geysers: ids currently firing. Both mirrored once per frame purely for render - the actual mask toggle/force application reads live state, not these. */
   const [gateOpenIds, setGateOpenIds] = useState<Set<string>>(new Set());
   const [geyserActiveIds, setGeyserActiveIds] = useState<Set<string>>(new Set());
+  /** Trench's crumbling pegs: id -> hits so far (for the fading "cracking" render), and ids permanently destroyed. */
+  const [crumblingPegHits, setCrumblingPegHits] = useState<Record<string, number>>({});
+  const [crumblingPegDestroyedIds, setCrumblingPegDestroyedIds] = useState<Set<string>>(new Set());
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -411,6 +427,46 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
     });
     setGateOpenIds(new Set());
     setGeyserActiveIds(new Set());
+
+    crumblingPegBodiesRef.current.clear();
+    crumblingPegHitsRef.current.clear();
+    crumblingPegPendingRemovalRef.current.clear();
+    crumblingPegDestroyedRef.current.clear();
+    (level.crumblingPegs ?? []).forEach((peg) => {
+      const body = createCrumblingPeg(pw.world, width / 2 + peg.dx, peg.y, peg.radius, peg.id);
+      crumblingPegBodiesRef.current.set(peg.id, body);
+      crumblingPegHitsRef.current.set(peg.id, 0);
+    });
+    setCrumblingPegHits({});
+    setCrumblingPegDestroyedIds(new Set());
+    portalCooldownRef.current.clear();
+
+    // Trench's crumbling pegs: this codebase's first use of matter-js collision events.
+    // collisionStart fires DURING Matter.Engine.update (mid-substep-loop) - the exact "world
+    // membership can't change here" danger zone this file's own substep-loop comment already
+    // warns about for triggerBonus/triggerGoldenBonus. So this handler only ever records a hit;
+    // actual Matter.World.remove happens in the Bucket-B tail below, same as everywhere else.
+    const handleCrumblingPegHit = (event: { pairs: { bodyA: Matter.Body; bodyB: Matter.Body }[] }) => {
+      for (const pair of event.pairs) {
+        const pegBody = pair.bodyA.label.startsWith('crumble-peg-')
+          ? pair.bodyA
+          : pair.bodyB.label.startsWith('crumble-peg-')
+          ? pair.bodyB
+          : null;
+        const ballBody = pegBody === pair.bodyA ? pair.bodyB : pair.bodyA;
+        if (!pegBody || !ballBody.label.startsWith('ball-')) continue;
+
+        const id = pegBody.label.replace('crumble-peg-', '');
+        if (crumblingPegDestroyedRef.current.has(id) || crumblingPegPendingRemovalRef.current.has(id)) continue;
+        const config = level.crumblingPegs?.find((p) => p.id === id);
+        if (!config) continue;
+
+        const hits = (crumblingPegHitsRef.current.get(id) ?? 0) + 1;
+        crumblingPegHitsRef.current.set(id, hits);
+        if (hits >= config.hitsToBreak) crumblingPegPendingRemovalRef.current.add(id);
+      }
+    };
+    Matter.Events.on(pw.engine, 'collisionStart', handleCrumblingPegHit);
 
     // Cluster balls in a small grid above the ramp's low point, like the pooled balls on the
     // real toy, instead of a single spread-out row.
@@ -813,6 +869,57 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
 
       triggerGoldenBonus(pw, level, settledBalls, filledRef.current, goldenTriggeredRef, width);
 
+      // Trench's crumbling pegs: the only place a hit-out peg actually gets removed from the
+      // world - collisionStart already fired mid-substep-loop and only recorded the hit (see that
+      // handler's own comment), so the real Matter.World.remove happens here, in the same
+      // post-substep-loop tail triggerBonus/triggerGoldenBonus already use for their own
+      // Matter.World.add calls.
+      if (crumblingPegPendingRemovalRef.current.size > 0) {
+        for (const id of crumblingPegPendingRemovalRef.current) {
+          const body = crumblingPegBodiesRef.current.get(id);
+          if (body) {
+            Matter.World.remove(pw.world, body);
+            for (let i = 0; i < 4; i++) spawnBubble(pw.world, body.position.x, body.position.y);
+            crumblingPegBodiesRef.current.delete(id);
+          }
+          crumblingPegDestroyedRef.current.add(id);
+        }
+        crumblingPegPendingRemovalRef.current.clear();
+        setCrumblingPegDestroyedIds(new Set(crumblingPegDestroyedRef.current));
+      }
+      if (level.crumblingPegs) setCrumblingPegHits(Object.fromEntries(crumblingPegHitsRef.current));
+
+      // Sunken Ship's portals: a position mutation, not a membership change, so it's safe here in
+      // the post-substep tail — placed after settledBalls above so an already-caught ball (still
+      // physically near a portal only in edge-case layouts) never gets yanked back out of its cup.
+      if (level.portals) {
+        const settledBallIds = new Set(Array.from(settledBalls.values()).map((b) => b.id));
+        const floatingBalls = Matter.Composite.allBodies(pw.world).filter(
+          (b) => b.label.startsWith('ball-') && !settledBallIds.has(b.id)
+        );
+        for (const portal of level.portals) {
+          const ax = width / 2 + portal.aDx;
+          const bx = width / 2 + portal.bDx;
+          for (const ball of floatingBalls) {
+            const cooldownUntil = portalCooldownRef.current.get(ball.id) ?? 0;
+            if (now < cooldownUntil) continue;
+            const distA = Math.hypot(ball.position.x - ax, ball.position.y - portal.aY);
+            const distB = Math.hypot(ball.position.x - bx, ball.position.y - portal.bY);
+            const enteredA = distA < portal.radius;
+            const enteredB = !enteredA && distB < portal.radius;
+            if (!enteredA && !enteredB) continue;
+
+            Matter.Body.setPosition(ball, enteredA ? { x: bx, y: portal.bY } : { x: ax, y: portal.aY });
+            Matter.Body.setVelocity(ball, { x: 0, y: 0 });
+            portalCooldownRef.current.set(ball.id, now + PORTAL_COOLDOWN_MS);
+            for (let i = 0; i < 3; i++) {
+              spawnBubble(pw.world, ax, portal.aY);
+              spawnBubble(pw.world, bx, portal.bY);
+            }
+          }
+        }
+      }
+
       const isCharging = !!level.chargeableJet && jetActiveRef.current && now - jetHoldStartAtRef.current >= CHARGE_THRESHOLD_MS;
       setCharging(isCharging);
 
@@ -853,6 +960,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      Matter.Events.off(pw.engine, 'collisionStart', handleCrumblingPegHit);
       Matter.World.clear(pw.world, false);
       Matter.Engine.clear(pw.engine);
     };
@@ -1015,6 +1123,45 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
             />
           );
         })}
+        {(level.crumblingPegs ?? [])
+          .filter((p) => !crumblingPegDestroyedIds.has(p.id))
+          .map((p) => {
+            const hits = crumblingPegHits[p.id] ?? 0;
+            const opacity = Math.max(0.15, 0.85 - (hits / p.hitsToBreak) * 0.6);
+            return (
+              <Circle
+                key={p.id}
+                cx={width / 2 + p.dx}
+                cy={p.y}
+                r={p.radius}
+                fill={`rgba(255,255,255,${opacity})`}
+                stroke="rgba(255,180,120,0.8)"
+                strokeWidth={1}
+              />
+            );
+          })}
+        {(level.portals ?? []).flatMap((portal) => [
+          <Circle
+            key={`${portal.id}-a`}
+            cx={width / 2 + portal.aDx}
+            cy={portal.aY}
+            r={portal.radius}
+            fill="rgba(170,100,255,0.25)"
+            stroke="rgba(200,160,255,0.85)"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />,
+          <Circle
+            key={`${portal.id}-b`}
+            cx={width / 2 + portal.bDx}
+            cy={portal.bY}
+            r={portal.radius}
+            fill="rgba(170,100,255,0.25)"
+            stroke="rgba(200,160,255,0.85)"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />,
+        ])}
         {level.targets.map((t) => {
           const isRainbow = t.id === rainbowTargetId;
           const dyn = level.cupMotion ? cupMotionSnapshot[t.id] : undefined;

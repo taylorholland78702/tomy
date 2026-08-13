@@ -63,6 +63,34 @@ export interface GeyserConfig {
   strength: number;
 }
 
+/**
+ * Trench's crumbling peg: a normal-looking peg (see createCrumblingPeg in physics/engine.ts) that
+ * breaks and disappears after hitsToBreak ball hits, detected via a matter-js collisionStart
+ * handler - the first mechanic in this codebase to use collision events.
+ */
+export interface CrumblingPegConfig {
+  id: string;
+  dx: number;
+  y: number;
+  radius: number;
+  /** Ball hits before it breaks and disappears. */
+  hitsToBreak: number;
+}
+
+/**
+ * Sunken Ship's portal pair: entering either endpoint's radius teleports the ball to the other
+ * (bidirectional). No physics body - detected via a plain per-frame distance check, not collision
+ * events, since a discrete "am I near this point" test doesn't need the real thing.
+ */
+export interface PortalConfig {
+  id: string;
+  aDx: number;
+  aY: number;
+  bDx: number;
+  bY: number;
+  radius: number;
+}
+
 export interface PhaseConfig {
   id: number;
   name: string;
@@ -141,6 +169,10 @@ export interface LevelConfig {
   gates?: GateConfig[];
   /** Sunken Ship's periodic geyser obstacle (see GeyserConfig). */
   geysers?: GeyserConfig[];
+  /** Trench's crumbling peg obstacle (see CrumblingPegConfig). */
+  crumblingPegs?: CrumblingPegConfig[];
+  /** Sunken Ship's portal pair obstacle (see PortalConfig). */
+  portals?: PortalConfig[];
   ballCount: number;
   ballColors: string[];
   /**
@@ -631,7 +663,13 @@ export const LEVELS: LevelConfig[] = [
     name: 'Center Clear',
     challenge: 'Press both together to reach the middle.',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
+    pegs: [],
+    // Trench's debut obstacle: the level's old PEGS_ROW_1 pegs, same positions, now breakable.
+    // First-pass hit count, not tuned against real playtest data.
+    crumblingPegs: [
+      { id: 'crumble-1', dx: -55, y: 185, radius: 6, hitsToBreak: 3 },
+      { id: 'crumble-2', dx: 55, y: 185, radius: 6, hitsToBreak: 3 },
+    ],
     ballCount: 6,
     ballColors: BALL_PALETTE,
     splitButtons: 'centerBurst',
@@ -677,6 +715,10 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'Cups periodically tilt shut.',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
     pegs: PEGS_ROW_1,
+    // Sunken Ship's debut obstacle: a left/right shortcut pair, placed clear of PEGS_ROW_1
+    // (dx +-55, y 185) and both cup rows. First-pass placement, not tuned against real playtest
+    // data.
+    portals: [{ id: 'portal-1', aDx: -150, aY: 250, bDx: 150, bY: 250, radius: 16 }],
     ballCount: 6,
     ballColors: BALL_PALETTE,
     cupMotion: 'tilt',
