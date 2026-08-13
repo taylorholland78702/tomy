@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { GameCanvas } from './GameCanvas';
+import { LevelCompleteOverlay } from './LevelCompleteOverlay';
 import { LEVELS, PHASES } from '../physics/levels';
 import { loadProgress, saveProgress } from '../utils/progress';
 
@@ -13,6 +14,12 @@ function starRow(count: number): string {
   return '★'.repeat(count) + '☆'.repeat(3 - count);
 }
 
+interface Completion {
+  levelName: string;
+  stars: number;
+  isFinal: boolean;
+}
+
 /** Orchestrates level progression through the flattened LEVELS list, grouped by Phase. */
 export function LevelManager() {
   const [levelIndex, setLevelIndex] = useState(() => {
@@ -22,7 +29,7 @@ export function LevelManager() {
   const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set(loadProgress().completedIds));
   const [bestStars, setBestStars] = useState<Record<string, number>>(() => loadProgress().stars);
   const [resetKey, setResetKey] = useState(0);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [completion, setCompletion] = useState<Completion | null>(null);
   const level = LEVELS[levelIndex];
   const isLastLevel = levelIndex + 1 >= LEVELS.length;
 
@@ -32,14 +39,16 @@ export function LevelManager() {
     const nextBestStars = { ...bestStars, [level.id]: Math.max(bestStars[level.id] ?? 0, stars) };
     setBestStars(nextBestStars);
     saveProgress(levelIndex, Array.from(nextCompletedIds), nextBestStars);
-    if (!isLastLevel) {
-      setBanner(`${level.name} complete!  ${starRow(stars)}`);
-      setTimeout(() => {
-        setBanner(null);
-        setLevelIndex((i) => i + 1);
-      }, 1100);
+    setCompletion({ levelName: level.name, stars, isFinal: isLastLevel });
+  };
+
+  const handleContinue = () => {
+    setCompletion(null);
+    if (isLastLevel) {
+      setLevelIndex(0);
+      saveProgress(0, Array.from(completedIds), bestStars);
     } else {
-      setBanner('All phases complete! \u{1F389}');
+      setLevelIndex((i) => i + 1);
     }
   };
 
@@ -48,7 +57,7 @@ export function LevelManager() {
   const isFirstLevel = levelIndex === 0;
   const jumpTo = (index: number) => {
     if (index < 0 || index >= LEVELS.length) return;
-    setBanner(null);
+    setCompletion(null);
     setLevelIndex(index);
     saveProgress(index, Array.from(completedIds), bestStars);
   };
@@ -88,10 +97,13 @@ export function LevelManager() {
       <Pressable style={styles.restartButton} onPress={handleRestart}>
         <Text style={styles.restartButtonText}>Restart</Text>
       </Pressable>
-      {banner && (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>{banner}</Text>
-        </View>
+      {completion && (
+        <LevelCompleteOverlay
+          levelName={completion.levelName}
+          stars={completion.stars}
+          isFinal={completion.isFinal}
+          onContinue={handleContinue}
+        />
       )}
     </View>
   );
@@ -174,19 +186,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     opacity: 0.85,
-  },
-  banner: {
-    position: 'absolute',
-    top: '42%',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 16,
-  },
-  bannerText: {
-    color: '#FFD23B',
-    fontSize: 20,
-    fontWeight: '700',
   },
 });
