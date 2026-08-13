@@ -8,6 +8,11 @@ function phaseName(phaseId: number): string {
   return PHASES.find((p) => p.id === phaseId)?.name ?? '';
 }
 
+/** e.g. starRow(2) -> "★★☆" - a plain-text star row, no new assets/deps needed. */
+function starRow(count: number): string {
+  return '★'.repeat(count) + '☆'.repeat(3 - count);
+}
+
 /** Orchestrates level progression through the flattened LEVELS list, grouped by Phase. */
 export function LevelManager() {
   const [levelIndex, setLevelIndex] = useState(() => {
@@ -15,17 +20,20 @@ export function LevelManager() {
     return saved >= 0 && saved < LEVELS.length ? saved : 0;
   });
   const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set(loadProgress().completedIds));
+  const [bestStars, setBestStars] = useState<Record<string, number>>(() => loadProgress().stars);
   const [resetKey, setResetKey] = useState(0);
   const [banner, setBanner] = useState<string | null>(null);
   const level = LEVELS[levelIndex];
   const isLastLevel = levelIndex + 1 >= LEVELS.length;
 
-  const handleComplete = () => {
+  const handleComplete = (stars: number) => {
     const nextCompletedIds = new Set(completedIds).add(level.id);
     setCompletedIds(nextCompletedIds);
-    saveProgress(levelIndex, Array.from(nextCompletedIds));
+    const nextBestStars = { ...bestStars, [level.id]: Math.max(bestStars[level.id] ?? 0, stars) };
+    setBestStars(nextBestStars);
+    saveProgress(levelIndex, Array.from(nextCompletedIds), nextBestStars);
     if (!isLastLevel) {
-      setBanner(`${level.name} complete!`);
+      setBanner(`${level.name} complete!  ${starRow(stars)}`);
       setTimeout(() => {
         setBanner(null);
         setLevelIndex((i) => i + 1);
@@ -42,7 +50,7 @@ export function LevelManager() {
     if (index < 0 || index >= LEVELS.length) return;
     setBanner(null);
     setLevelIndex(index);
-    saveProgress(index, Array.from(completedIds));
+    saveProgress(index, Array.from(completedIds), bestStars);
   };
 
   return (
@@ -66,7 +74,7 @@ export function LevelManager() {
           </Pressable>
           <Text style={styles.navCounterText}>
             {levelIndex + 1} / {LEVELS.length}
-            {completedIds.has(level.id) ? ' ✓' : ''}
+            {completedIds.has(level.id) ? `  ${starRow(bestStars[level.id] ?? 0)}` : ''}
           </Text>
           <Pressable
             style={[styles.navButton, isLastLevel && styles.navButtonDisabled]}

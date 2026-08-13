@@ -117,7 +117,8 @@ function ballBodyOptions(color: string): Matter.IBodyDefinition {
 
 interface Props {
   level: LevelConfig;
-  onComplete: () => void;
+  /** Called once, on the frame a level is won, with the 1-3 star rating computed by computeStars. */
+  onComplete: (stars: number) => void;
 }
 
 interface RenderBody {
@@ -661,7 +662,8 @@ export function GameCanvas({ level, onComplete }: Props) {
       }
       const { changed: filledChanged, newlyFilled } = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
-        setTimeout(onComplete, 1200);
+        const stars = computeStars(level, now - levelStartAtRef.current);
+        setTimeout(() => onComplete(stars), 1200);
       });
       if (filledChanged) setFilledIds(Array.from(filledRef.current));
       if (newlyFilled.length > 0 && !level.finaleEffects) {
@@ -1304,6 +1306,34 @@ function updateCountdownTick(
  * combo meter needs a genuine new landing, not "still filled from before", to know a fresh shot
  * was made.
  */
+/**
+ * 1-3 star rating from completion time, the one signal every level already has regardless of
+ * mechanic (score/lives/combo-count don't exist and aren't universal across all 27 levels' very
+ * different win conditions). First-pass heuristic, not tuned against real playtest data yet:
+ *
+ * - Levels with ballLifespanMs (Phase 2's countdown mechanic) already have a real, designer-tuned
+ *   time pressure baked in - finishing well inside that window is the natural "great run" signal,
+ *   so par is derived from it directly (0.55x = 3 stars, 0.85x = 2 stars).
+ * - Every other level has no built-in clock, so par is a generous ballCount-scaled estimate
+ *   (roughly "a few seconds of flight time per ball, plus setup"). Likely needs retuning once
+ *   there's real completion-time data to look at - flagging this rather than presenting the
+ *   numbers as final.
+ */
+function computeStars(level: LevelConfig, elapsedMs: number): number {
+  let threeStarMs: number;
+  let twoStarMs: number;
+  if (level.ballLifespanMs) {
+    threeStarMs = level.ballLifespanMs * 0.55;
+    twoStarMs = level.ballLifespanMs * 0.85;
+  } else {
+    threeStarMs = 3000 + level.ballCount * 2200;
+    twoStarMs = threeStarMs * 1.8;
+  }
+  if (elapsedMs <= threeStarMs) return 3;
+  if (elapsedMs <= twoStarMs) return 2;
+  return 1;
+}
+
 function checkTargets(
   settledBalls: Map<string, Matter.Body>,
   level: LevelConfig,
