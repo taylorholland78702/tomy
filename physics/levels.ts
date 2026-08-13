@@ -176,11 +176,10 @@ export interface LevelConfig {
    */
   levelTimerMs?: number;
   /**
-   * The "moving target" mechanic: 'drift' slowly sways the Air Jet button left-right, 'jump'
-   * teleports it to a new spot after every release, 'twin' keeps 'jump' behavior on the primary
-   * button and adds a second temporary button on the opposite side. Currently only used by the
-   * finale Phase's 'drift' variant, layered alongside its other hazards. Undefined = button stays
-   * centered, i.e. every level outside the finale.
+   * The "moving target" mechanic (currently unused by any level): 'drift' slowly sways the Air
+   * Jet button left-right, 'jump' teleports it to a new spot after every release, 'twin' keeps
+   * 'jump' behavior on the primary button and adds a second temporary button on the opposite
+   * side. Undefined = button stays centered, i.e. every level.
    */
   buttonMotion?: 'drift' | 'jump' | 'twin';
   /**
@@ -481,15 +480,14 @@ export const LEVELS: LevelConfig[] = [
     levelInPhase: 1,
     type: 'baskets',
     name: 'Highlight Reel',
-    challenge: 'Drifting aim, current, and combos — all at once.',
+    challenge: 'Current and combos — all at once.',
     targets: TOP_ROW,
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    // Opens the finale with everything it's about to demand at once: a drifting aim (the button
-    // won't sit still), a sideways current (an in-flight hazard), and the combo meter (rewards
-    // fast, confident play against both) — three hazards stacked on the smallest board.
-    buttonMotion: 'drift',
+    // Opens the finale with everything it's about to demand at once: a sideways current (an
+    // in-flight hazard) and the combo meter (rewards fast, confident play against it) — two
+    // hazards stacked on the smallest board.
     sideCurrent: true,
     comboMeter: true,
   },
@@ -509,7 +507,6 @@ export const LEVELS: LevelConfig[] = [
     // Level 10, but urgent." levelTimerMs is Level 4's 15s + 5s/ball formula (45s for 6 balls)
     // divided by paceMultiplier, same as every other timed mechanic this level scales —
     // first-pass estimate, not tuned against real playtest data.
-    buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'tilt',
     comboMeter: true,
@@ -530,7 +527,6 @@ export const LEVELS: LevelConfig[] = [
     // The set-piece finale: full remix + full pace + the lightweight combo-reactive flourishes
     // (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx). levelTimerMs: see
     // Level 11's comment - same formula (60s for 9 balls) divided by paceMultiplier.
-    buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'full',
     comboMeter: true,

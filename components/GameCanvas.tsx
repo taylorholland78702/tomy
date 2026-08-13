@@ -218,7 +218,7 @@ const TICK_INTERVAL_URGENT_MS = 200;
 /** Sunken Ship's portals: how long a ball is immune to re-teleporting right after landing on an exit. */
 const PORTAL_COOLDOWN_MS = 500;
 /**
- * The moving-target mechanic: how far the Air Jet button can shift from center, px. Kept
+ * The moving-target mechanic (currently unused by any level): how far the Air Jet button can shift from center, px. Kept
  * well clear of the fixed Restart/tilt-permission buttons at the screen edges (see
  * LevelManager.tsx / GameCanvas.tsx's own bottom-corner overlays).
  */
@@ -299,7 +299,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const centerBubbleNextAtRef = useRef(0);
   /** Fixed-timestep physics: leftover render-frame time not yet consumed by a FIXED_DT sub-step. */
   const accumulatorRef = useRef(0);
-  /** The moving-target mechanic: primary button's current x offset from center, px. */
+  /** The moving-target mechanic (currently unused by any level): primary button's current x offset from center, px. */
   const buttonOffsetRef = useRef(0);
   /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
   const secondaryActiveRef = useRef(false);
@@ -685,8 +685,8 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           }
         }
         if (level.sideCurrent) {
-          // The side current hazard: a smooth, continuously-oscillating sideways force (sine wave,
-          // like the finale's button drift) rather than a one-way push, so balls don't just pile up
+          // The side current hazard: a smooth, continuously-oscillating sideways force (sine wave)
+          // rather than a one-way push, so balls don't just pile up
           // against one wall over time. Phase 4's paceMultiplier (default 1) shortens the period —
           // dividing rather than a separate constant, so it composes with the existing wave shape.
           // Reuses this render frame's `now` for every sub-step (rather than a separately-advancing
@@ -1306,8 +1306,8 @@ const styles = StyleSheet.create({
 });
 
 /**
- * The moving-target mechanic. No-op (returns false) when the level has no buttonMotion, so every
- * level outside the finale is unaffected.
+ * The moving-target mechanic (currently unused by any level). No-op (returns false) when the
+ * level has no buttonMotion, so every level is unaffected.
  *
  * 'drift' sways buttonOffsetRef continuously via a sine wave — smooth and fully predictable.
  * 'jump'/'twin' don't move the primary button here at all; that only happens on release, handled

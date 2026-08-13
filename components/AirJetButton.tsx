@@ -5,7 +5,7 @@ import { hapticJetPress, hapticJetHoldTick } from '../utils/haptics';
 
 interface Props {
   onHoldChange: (active: boolean) => void;
-  /** Horizontal shift from center, in px — the moving-target mechanic. Defaults to centered. */
+  /** Horizontal shift from center, in px — the moving-target mechanic (currently unused by any level). Defaults to centered. */
   offsetX?: number;
   /**
    * 'ghost' styles this as the 'twin' buttonMotion variant's temporary second button (currently
