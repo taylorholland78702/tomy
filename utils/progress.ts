@@ -3,11 +3,9 @@ const STORAGE_KEY = 'waterful-toys-progress-v1';
 interface Progress {
   levelIndex: number;
   completedIds: string[];
-  /** Best 1-3 star rating earned per level id (see computeStars in GameCanvas.tsx). */
-  stars: Record<string, number>;
 }
 
-const EMPTY_PROGRESS: Progress = { levelIndex: 0, completedIds: [], stars: {} };
+const EMPTY_PROGRESS: Progress = { levelIndex: 0, completedIds: [] };
 
 /** Web-only, like utils/audio.ts's Web Audio API split - localStorage has no native fallback here. */
 export function loadProgress(): Progress {
@@ -19,14 +17,13 @@ export function loadProgress(): Progress {
     return {
       levelIndex: typeof parsed.levelIndex === 'number' ? parsed.levelIndex : 0,
       completedIds: Array.isArray(parsed.completedIds) ? parsed.completedIds : [],
-      stars: parsed.stars && typeof parsed.stars === 'object' ? parsed.stars : {},
     };
   } catch {
     return EMPTY_PROGRESS;
   }
 }
 
-export function saveProgress(levelIndex: number, completedIds: string[], stars: Record<string, number>) {
+export function saveProgress(levelIndex: number, completedIds: string[]) {
   if (typeof window === 'undefined' || !window.localStorage) return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ levelIndex, completedIds, stars }));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ levelIndex, completedIds }));
 }

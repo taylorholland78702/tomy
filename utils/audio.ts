@@ -150,35 +150,3 @@ export function playLandingNote(progress: number) {
   osc.start(now);
   osc.stop(now + 0.11);
 }
-
-/** Fixed C5-E5-G5 major-triad ding per star, one call per star as it pops in on the level-complete overlay. */
-const STAR_CHIME_NOTES = [523.25, 659.25, 783.99];
-
-/**
- * Star-reveal ding for the level-complete overlay's staggered star pop (see
- * components/LevelCompleteOverlay.tsx). Distinct timbre from playComboNote/playLandingNote's
- * continuous pitch sweep - a fixed ascending triad reads as "counting up" rather than "getting
- * warmer", which fits three discrete stars appearing one at a time rather than a continuous fill.
- */
-export function playStarChime(starIndex: number) {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-  if (ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
-
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = 'sine';
-  osc.frequency.value = STAR_CHIME_NOTES[Math.min(starIndex, STAR_CHIME_NOTES.length - 1)];
-
-  const now = ctx.currentTime;
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(0.09, now + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + 0.23);
-}

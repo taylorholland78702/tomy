@@ -20,11 +20,6 @@ export function hapticSinkerWarning() {
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 }
 
-/** Single light tap for each star as it pops in on the level-complete overlay's star reveal. */
-export function hapticStarPop() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
-
 /** Multi-pulse celebration sequence on level completion. */
 export async function hapticLevelComplete() {
   const pattern = [

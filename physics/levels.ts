@@ -47,15 +47,13 @@ export interface LevelConfig {
   ballCount: number;
   ballColors: string[];
   /**
-   * Phase 2's "ball lifecycle" mechanic: when set, a floating ball (not currently resting in a
-   * cup) ages out and sinks after this many ms. Undefined = balls live forever, i.e. every
-   * Phase 1 level, unchanged from the original design.
+   * Phase 2's "beat the clock" mechanic: when set, the whole level races a single shared
+   * countdown (shown in the HUD, ticking faster as it nears zero — see utils/audio.ts's
+   * playCountdownTick). Reaching zero before every target is filled restarts the level, same as
+   * tapping the Restart button. Undefined = no clock, i.e. every level outside Phase 2 and the
+   * finale, unchanged from the original design.
    */
-  ballLifespanMs?: number;
-  /** Enables the countdown tick sound (see utils/audio.ts), speeding up as a ball nears expiry. */
-  tickAudio?: boolean;
-  /** Enables age-based shrinking (see FIZZY_MIN_SCALE in GameCanvas.tsx) — late hits get harder. */
-  ballFizzy?: boolean;
+  levelTimerMs?: number;
   /**
    * Phase 3's "moving target" mechanic: 'drift' slowly sways the Air Jet button left-right,
    * 'jump' teleports it to a new spot after every release, 'twin' keeps 'jump' behavior on the
@@ -233,21 +231,16 @@ export const LEVELS: LevelConfig[] = [
     phase: 2,
     levelInPhase: 1,
     type: 'baskets',
-    name: 'Countdown Ring',
-    challenge: 'Land it before the ring runs out.',
+    name: 'Countdown Clock',
+    challenge: 'Fill every cup before time runs out.',
     targets: TOP_ROW,
     pegs: [],
     ballCount: 3,
     ballColors: BALL_PALETTE,
-    // Shortened from 30000 and tickAudio added: catching became both easier (wider settle
-    // tolerance) and permanent (stickyRetention) this session, which let a caught ball vanish
-    // from the clock entirely — the timer only ever threatened balls still in the air. This
-    // retunes the pressure back up now that landing safely is far more forgiving than when 30000
-    // was originally tuned. tickAudio was also missing entirely on this phase's own levels (only
-    // set on 26/27), so the countdown ring's urgency has always been silent here — a real gap,
-    // not just a difficulty choice.
-    ballLifespanMs: 20000,
-    tickAudio: true,
+    // Redesigned from a per-ball aging/sinking timer to one shared level clock, per explicit
+    // request. 15s base + 5s/ball is a first-pass estimate (10s/cup here), not tuned against real
+    // playtest data — likely needs adjustment once someone's actually played it.
+    levelTimerMs: 30000,
   },
   {
     id: 'level-5',
@@ -256,15 +249,14 @@ export const LEVELS: LevelConfig[] = [
     levelInPhase: 2,
     type: 'baskets',
     name: 'Countdown Six',
-    challenge: 'Six balls racing the clock.',
+    challenge: 'Six balls, one shared clock.',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
     pegs: PEGS_ROW_1,
     ballCount: 6,
     ballColors: BALL_PALETTE,
-    // See level-4's comment — same retune, tightened further since more balls means less slack
-    // needed per ball.
-    ballLifespanMs: 16000,
-    tickAudio: true,
+    // See level-4's comment — same 15s + 5s/ball formula (7.5s/cup here), tightened as ball count
+    // rises.
+    levelTimerMs: 45000,
   },
   {
     id: 'level-6',
@@ -273,14 +265,13 @@ export const LEVELS: LevelConfig[] = [
     levelInPhase: 3,
     type: 'baskets',
     name: 'Countdown Nine',
-    challenge: 'Every ball on a timer.',
+    challenge: 'Every cup, one countdown.',
     targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
     ballColors: BALL_PALETTE,
-    // See level-4's comment — same retune, tightened further as the phase's mastery checkpoint.
-    ballLifespanMs: 13000,
-    tickAudio: true,
+    // See level-4's comment — same formula (6.67s/cup here), the phase's mastery checkpoint.
+    levelTimerMs: 60000,
   },
   {
     id: 'level-7',
@@ -594,14 +585,15 @@ export const LEVELS: LevelConfig[] = [
     ballCount: 6,
     ballColors: BALL_PALETTE,
     // Same remix ingredients as Level 25 plus Phase 8's tilt, all sped up via paceMultiplier:
-    // shorter ball life, faster current oscillation, quicker cup tilt cycles — "everything from
-    // Level 25, but urgent."
+    // faster current oscillation, quicker cup tilt cycles, and now a tighter shared clock —
+    // "everything from Level 25, but urgent." levelTimerMs is level-4's 15s + 5s/ball formula
+    // (45s for 6 balls) divided by paceMultiplier, same as every other timed mechanic this level
+    // scales — first-pass estimate, not tuned against real playtest data.
     buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'tilt',
     comboMeter: true,
-    ballLifespanMs: 18000,
-    tickAudio: true,
+    levelTimerMs: 28000,
     paceMultiplier: 1.6,
   },
   {
@@ -615,15 +607,15 @@ export const LEVELS: LevelConfig[] = [
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
     ballCount: 9,
     ballColors: BALL_PALETTE,
-    // The set-piece finale: full remix + full pace + the new lightweight combo-reactive
-    // flourishes (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx).
+    // The set-piece finale: full remix + full pace + the lightweight combo-reactive flourishes
+    // (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx). levelTimerMs: see
+    // Level 26's comment - same formula (60s for 9 balls) divided by paceMultiplier.
     buttonMotion: 'drift',
     sideCurrent: true,
     cupMotion: 'full',
     comboMeter: true,
     finaleEffects: true,
-    ballLifespanMs: 18000,
-    tickAudio: true,
+    levelTimerMs: 38000,
     paceMultiplier: 1.6,
   },
 ];

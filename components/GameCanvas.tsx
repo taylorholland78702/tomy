@@ -64,11 +64,11 @@ function shadeColor(hex: string, percent: number): string {
 }
 
 /**
- * Countdown-ring color: calm through most of a ball's life, shifting to amber/red only in the
- * last ~20% of remaining time — per the "generous, just enough to notice" brief for Phase 2
- * Level 1 (urgency escalates further in later Phase 2 levels via a tick sound, not color alone).
+ * Shared level clock's text color: calm through most of the countdown, shifting to amber/red only
+ * in the last ~20% of remaining time — per the original "generous, just enough to notice" brief
+ * (urgency escalates further via the tick sound speeding up, not color alone).
  */
-function ringColor(fraction: number): string {
+function clockColor(fraction: number): string {
   const calm = { r: 190, g: 235, b: 255 };
   const danger = { r: 255, g: 92, b: 59 };
   if (fraction > 0.2) return `rgba(${calm.r},${calm.g},${calm.b},0.85)`;
@@ -80,6 +80,14 @@ function ringColor(fraction: number): string {
 }
 
 const ballGradientId = (color: string) => `ball-grad-${color.replace('#', '')}`;
+
+/** e.g. formatClock(65400) -> "1:05" - always rounds up so the display never touches "0:00" a beat before the real timeout does. */
+function formatClock(ms: number): string {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 /**
  * Shared Matter.js body options for every playable ball — the initial level-setup spawn and
@@ -107,8 +115,10 @@ function ballBodyOptions(color: string): Matter.IBodyDefinition {
 
 interface Props {
   level: LevelConfig;
-  /** Called once, on the frame a level is won, with the 1-3 star rating computed by computeStars. */
-  onComplete: (stars: number) => void;
+  /** Called once, on the frame a level is won. */
+  onComplete: () => void;
+  /** Called once if level.levelTimerMs's shared clock hits zero before the level is won. */
+  onTimeout: () => void;
 }
 
 interface RenderBody {
@@ -120,8 +130,6 @@ interface RenderBody {
   isBubble: boolean;
   /** Phase 5's sinker ball — renders as a flat muted circle instead of a gradient-filled one. */
   isSinker?: boolean;
-  /** Fraction of remaining life (1 = fresh, 0 = about to sink) — set only for levels with ballLifespanMs. */
-  ringFraction?: number;
 }
 
 /** Lighter than matter's circle default (0.001) — see the ball body creation below for why. */
@@ -188,9 +196,7 @@ const SETTLE_VELOCITY_THRESHOLD = 1.8;
  * handheld jitter or the sideways/backward tilts used for regular play.
  */
 const FORWARD_TILT_EJECT_GRAVITY_Y = -0.5;
-/** Phase 2 Level 3's "fizzy" balls shrink to this fraction of their original size by end of life. */
-const FIZZY_MIN_SCALE = 0.55;
-/** Countdown tick cadence range (ms) — calm at full life, urgent as a ball nears expiry. */
+/** Countdown tick cadence range (ms) — calm with time to spare, urgent as the clock nears zero. */
 const TICK_INTERVAL_CALM_MS = 900;
 const TICK_INTERVAL_URGENT_MS = 200;
 /**
@@ -249,7 +255,7 @@ const CUP_TILT_PHASE_STAGGER_MS = 900;
 /** Past this tilt, a cup can't hold or newly catch a ball this frame — see resolveCupTarget. */
 const CUP_SETTLE_TILT_LIMIT_DEG = 15;
 
-export function GameCanvas({ level, onComplete }: Props) {
+export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const { width, height } = Dimensions.get('window');
   const physicsRef = useRef<PhysicsWorld | null>(null);
   const jetActiveRef = useRef(false);
@@ -258,15 +264,14 @@ export function GameCanvas({ level, onComplete }: Props) {
       (captured once at lock time). Cleared on level (re)mount and on every forward-tilt eject. */
   const lockedBallsRef = useRef<Map<string, { body: Matter.Body; x: number; restY: number }>>(new Map());
   const wonRef = useRef(false);
+  /** Phase 2's shared level clock: whether onTimeout has already fired this level instance, so a
+      frozen render loop after LevelManager starts the restart can't call it more than once. */
+  const timedOutRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const jetXRef = useRef(width / 2);
   const jetYRef = useRef(height);
   const cupAnchorsRef = useRef<CupAnchor[]>([]);
-  /** Phase 2's ball-lifecycle mechanic: body id -> accumulated ms spent "unsafe" (not settled in a cup). */
-  const ballAgeRef = useRef<Map<number, number>>(new Map());
-  /** Phase 2 Level 3's fizzy shrink: body id -> current scale factor relative to its original size. */
-  const ballScaleRef = useRef<Map<number, number>>(new Map());
-  /** Phase 2 Levels 2-3's countdown tick: timestamp the next tick is allowed to play. */
+  /** Phase 2's shared level clock: timestamp the next tick sound is allowed to play. */
   const nextTickAtRef = useRef(0);
   /** Jet-exhaust bubble throttle: timestamp each independent spawn site is next allowed to fire —
       one per site (left jet, secondary/right jet, Phase 7's center burst) so simultaneous jets
@@ -328,6 +333,8 @@ export function GameCanvas({ level, onComplete }: Props) {
   const [charging, setCharging] = useState(false);
   const [cupMotionSnapshot, setCupMotionSnapshot] = useState<Record<string, CupMotionState>>({});
   const [shakeOffset, setShakeOffsetState] = useState({ x: 0, y: 0 });
+  /** Phase 2's shared level clock, ms remaining — null when the level has no levelTimerMs. */
+  const [clockRemainingMs, setClockRemainingMs] = useState<number | null>(null);
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -399,8 +406,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     filledRef.current = new Set();
     lockedBallsRef.current = new Map();
     wonRef.current = false;
-    ballAgeRef.current = new Map();
-    ballScaleRef.current = new Map();
+    timedOutRef.current = false;
     nextTickAtRef.current = 0;
     leftBubbleNextAtRef.current = 0;
     rightBubbleNextAtRef.current = 0;
@@ -438,6 +444,7 @@ export function GameCanvas({ level, onComplete }: Props) {
     setCharging(false);
     setCupMotionSnapshot({});
     setShakeOffsetState({ x: 0, y: 0 });
+    setClockRemainingMs(level.levelTimerMs ?? null);
 
     let lastTime = Date.now();
     const loop = () => {
@@ -652,16 +659,22 @@ export function GameCanvas({ level, onComplete }: Props) {
       }
       const { changed: filledChanged, newlyFilled } = checkTargets(settledBalls, level, filledRef.current, wonRef, () => {
         hapticLevelComplete();
-        const stars = computeStars(level, now - levelStartAtRef.current);
-        setTimeout(() => onComplete(stars), 1200);
+        setTimeout(onComplete, 1200);
       });
       if (filledChanged) setFilledIds(Array.from(filledRef.current));
       if (newlyFilled.length > 0 && !level.finaleEffects) {
         playLandingNote(filledRef.current.size / level.targets.length);
       }
 
-      updateBallLifecycle(pw, level, settledBalls, ballAgeRef.current, ballScaleRef.current, delta);
-      updateCountdownTick(pw, level, settledBalls, ballAgeRef.current, nextTickAtRef, now);
+      if (level.levelTimerMs) {
+        const remainingMs = Math.max(0, level.levelTimerMs - (now - levelStartAtRef.current));
+        setClockRemainingMs(remainingMs);
+        updateLevelClockTick(remainingMs, level.levelTimerMs, nextTickAtRef, now);
+        if (remainingMs <= 0 && !wonRef.current && !timedOutRef.current) {
+          timedOutRef.current = true;
+          onTimeout();
+        }
+      }
 
       const rampLowX = width / 2;
       const rampLowY = currentRampBaseY;
@@ -723,10 +736,6 @@ export function GameCanvas({ level, onComplete }: Props) {
         bodies.map((b) => {
           const isBall = b.label.startsWith('ball-');
           const isSinker = b.label.startsWith('sinker-');
-          const ringFraction =
-            isBall && level.ballLifespanMs
-              ? Math.max(0, 1 - (ballAgeRef.current.get(b.id) ?? 0) / level.ballLifespanMs)
-              : undefined;
           return {
             id: b.id,
             x: b.position.x,
@@ -735,7 +744,6 @@ export function GameCanvas({ level, onComplete }: Props) {
             color: isBall ? b.label.replace('ball-', '') : isSinker ? SINKER_COLOR : '#EAFBFF',
             isBubble: b.label === 'bubble',
             isSinker,
-            ringFraction,
           };
         })
       );
@@ -749,7 +757,7 @@ export function GameCanvas({ level, onComplete }: Props) {
       Matter.World.clear(pw.world, false);
       Matter.Engine.clear(pw.engine);
     };
-  }, [level, width, height, onComplete]);
+  }, [level, width, height, onComplete, onTimeout]);
 
   const handleHoldChange = useCallback(
     (active: boolean) => {
@@ -893,34 +901,23 @@ export function GameCanvas({ level, onComplete }: Props) {
           );
         })}
         {renderBodies.map((b) => (
-          <React.Fragment key={b.id}>
-            <Circle
-              cx={b.x}
-              cy={b.y}
-              r={b.radius}
-              fill={b.isBubble ? 'rgba(255,255,255,0.55)' : b.isSinker ? SINKER_COLOR : `url(#${ballGradientId(b.color)})`}
-              opacity={b.isBubble ? 0.6 : 1}
-            />
-            {b.ringFraction !== undefined &&
-              (() => {
-                const ringRadius = b.radius + 4;
-                const circumference = 2 * Math.PI * ringRadius;
-                return (
-                  <Circle
-                    cx={b.x}
-                    cy={b.y}
-                    r={ringRadius}
-                    fill="none"
-                    stroke={ringColor(b.ringFraction)}
-                    strokeWidth={2}
-                    strokeDasharray={`${circumference * b.ringFraction} ${circumference}`}
-                    strokeLinecap="round"
-                  />
-                );
-              })()}
-          </React.Fragment>
+          <Circle
+            key={b.id}
+            cx={b.x}
+            cy={b.y}
+            r={b.radius}
+            fill={b.isBubble ? 'rgba(255,255,255,0.55)' : b.isSinker ? SINKER_COLOR : `url(#${ballGradientId(b.color)})`}
+            opacity={b.isBubble ? 0.6 : 1}
+          />
         ))}
       </Svg>
+      {clockRemainingMs !== null && (
+        <View style={styles.clockPill} pointerEvents="none">
+          <Text style={[styles.clockText, { color: clockColor(clockRemainingMs / (level.levelTimerMs ?? 1)) }]}>
+            {formatClock(clockRemainingMs)}
+          </Text>
+        </View>
+      )}
       {comboCount > 1 && (
         <View style={styles.comboPill} pointerEvents="none">
           <Text style={styles.comboText}>Combo ×{comboCount}</Text>
@@ -989,6 +986,22 @@ const styles = StyleSheet.create({
     color: '#FFD23B',
     fontWeight: '700',
     fontSize: 14,
+  },
+  clockPill: {
+    position: 'absolute',
+    top: 108,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  clockText: {
+    fontWeight: '700',
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
   },
 });
 
@@ -1198,132 +1211,33 @@ function computeSettledSinkers(
 }
 
 /**
- * Phase 2's ball-lifecycle mechanic: every floating (non-settled) ball accumulates age each
- * frame; once it reaches ballLifespanMs it sinks (removed from the world, small bubble-burst
- * "splash"). A settled ball's timer pauses, not resets, at its current value, so a ball nudged
- * out of a cup later resumes from where it left off rather than getting a fresh full life.
- * No-op when the level has no ballLifespanMs, so Phase 1 levels are unaffected.
- *
- * When level.ballFizzy is set (Phase 2 Level 3), a ball also shrinks toward FIZZY_MIN_SCALE as
- * its age approaches the lifespan, driven by the same age value — frozen while settled, same as
- * the countdown ring. Matter.Body.scale updates the body's circleRadius directly, so rendering
- * (which reads circleRadius) picks up the shrink automatically with no render-side changes.
- * Body.scale is relative, not absolute, so ballScale tracks each ball's current factor to compute
- * the right per-frame ratio toward the deterministic age-derived target.
+ * Phase 2's shared level clock: a short beep (see playCountdownTick in utils/audio.ts) on a
+ * schedule driven by how much of the whole level's levelTimerMs remains, speeding up as the
+ * clock nears zero. Replaces the old per-ball aging/tick mechanic — one clock for the whole
+ * level instead of each ball independently aging out. No-op when the level has no levelTimerMs
+ * (the caller already guards on this, but kept here too so the function is safe standalone).
  */
-function updateBallLifecycle(
-  pw: PhysicsWorld,
-  level: LevelConfig,
-  settledBalls: Map<string, Matter.Body>,
-  ballAge: Map<number, number>,
-  ballScale: Map<number, number>,
-  delta: number
-) {
-  if (!level.ballLifespanMs) return;
-
-  const settledBallIds = new Set(Array.from(settledBalls.values()).map((b) => b.id));
-  const ballBodies = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
-  for (const ball of ballBodies) {
-    if (settledBallIds.has(ball.id)) continue;
-
-    const age = (ballAge.get(ball.id) ?? 0) + delta;
-    if (age >= level.ballLifespanMs) {
-      const { x, y } = ball.position;
-      Matter.World.remove(pw.world, ball);
-      ballAge.delete(ball.id);
-      ballScale.delete(ball.id);
-      for (let i = 0; i < 5; i++) spawnBubble(pw.world, x, y);
-      continue;
-    }
-
-    ballAge.set(ball.id, age);
-
-    if (level.ballFizzy) {
-      const targetScale = 1 - (age / level.ballLifespanMs) * (1 - FIZZY_MIN_SCALE);
-      const currentScale = ballScale.get(ball.id) ?? 1;
-      if (targetScale !== currentScale) {
-        const ratio = targetScale / currentScale;
-        Matter.Body.scale(ball, ratio, ratio);
-        ballScale.set(ball.id, targetScale);
-      }
-    }
-  }
-}
-
-/**
- * Phase 2 Levels 2-3's countdown tick: a short beep (see playCountdownTick in utils/audio.ts)
- * that plays on a schedule tied to whichever aging ball is closest to sinking, speeding up as
- * urgency rises. No-ops when the level has no tickAudio, or when every ball is currently settled
- * (safe) — nothing to feel urgent about once everything has landed.
- */
-function updateCountdownTick(
-  pw: PhysicsWorld,
-  level: LevelConfig,
-  settledBalls: Map<string, Matter.Body>,
-  ballAge: Map<number, number>,
+function updateLevelClockTick(
+  remainingMs: number,
+  levelTimerMs: number,
   nextTickAtRef: React.MutableRefObject<number>,
   now: number
 ) {
-  if (!level.tickAudio || !level.ballLifespanMs) return;
-
-  const settledBallIds = new Set(Array.from(settledBalls.values()).map((b) => b.id));
-  const ballBodies = Matter.Composite.allBodies(pw.world).filter((b) => b.label.startsWith('ball-'));
-
-  let minFraction = 1;
-  for (const ball of ballBodies) {
-    if (settledBallIds.has(ball.id)) continue;
-    const age = ballAge.get(ball.id) ?? 0;
-    const fraction = 1 - age / level.ballLifespanMs;
-    if (fraction < minFraction) minFraction = fraction;
-  }
-
-  if (minFraction >= 1) return; // nothing currently aging
-
-  if (now >= nextTickAtRef.current) {
-    const urgency = 1 - minFraction;
-    playCountdownTick(urgency);
-    nextTickAtRef.current = now + (TICK_INTERVAL_CALM_MS - urgency * (TICK_INTERVAL_CALM_MS - TICK_INTERVAL_URGENT_MS));
-  }
+  if (now < nextTickAtRef.current) return;
+  const urgency = 1 - remainingMs / levelTimerMs;
+  playCountdownTick(urgency);
+  nextTickAtRef.current = now + (TICK_INTERVAL_CALM_MS - urgency * (TICK_INTERVAL_CALM_MS - TICK_INTERVAL_URGENT_MS));
 }
 
 /**
  * A target counts as "filled" only while a ball is currently resting in its bowl. Re-evaluated
  * every frame in both directions: a cup un-fills the moment its ball is knocked out or lifted
- * back out by the jet (or, in Phase 2, sinks away after its countdown expires), not just once
- * when a ball first lands.
+ * back out by the jet, not just once when a ball first lands.
  *
  * `newlyFilled` lists only the ids that transitioned unfilled->filled *this frame* — Phase 4's
  * combo meter needs a genuine new landing, not "still filled from before", to know a fresh shot
  * was made.
  */
-/**
- * 1-3 star rating from completion time, the one signal every level already has regardless of
- * mechanic (score/lives/combo-count don't exist and aren't universal across all 27 levels' very
- * different win conditions). First-pass heuristic, not tuned against real playtest data yet:
- *
- * - Levels with ballLifespanMs (Phase 2's countdown mechanic) already have a real, designer-tuned
- *   time pressure baked in - finishing well inside that window is the natural "great run" signal,
- *   so par is derived from it directly (0.55x = 3 stars, 0.85x = 2 stars).
- * - Every other level has no built-in clock, so par is a generous ballCount-scaled estimate
- *   (roughly "a few seconds of flight time per ball, plus setup"). Likely needs retuning once
- *   there's real completion-time data to look at - flagging this rather than presenting the
- *   numbers as final.
- */
-function computeStars(level: LevelConfig, elapsedMs: number): number {
-  let threeStarMs: number;
-  let twoStarMs: number;
-  if (level.ballLifespanMs) {
-    threeStarMs = level.ballLifespanMs * 0.55;
-    twoStarMs = level.ballLifespanMs * 0.85;
-  } else {
-    threeStarMs = 3000 + level.ballCount * 2200;
-    twoStarMs = threeStarMs * 1.8;
-  }
-  if (elapsedMs <= threeStarMs) return 3;
-  if (elapsedMs <= twoStarMs) return 2;
-  return 1;
-}
-
 function checkTargets(
   settledBalls: Map<string, Matter.Body>,
   level: LevelConfig,

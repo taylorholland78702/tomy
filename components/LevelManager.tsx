@@ -9,14 +9,8 @@ function phaseName(phaseId: number): string {
   return PHASES.find((p) => p.id === phaseId)?.name ?? '';
 }
 
-/** e.g. starRow(2) -> "★★☆" - a plain-text star row, no new assets/deps needed. */
-function starRow(count: number): string {
-  return '★'.repeat(count) + '☆'.repeat(3 - count);
-}
-
 interface Completion {
   levelName: string;
-  stars: number;
   isFinal: boolean;
 }
 
@@ -27,26 +21,23 @@ export function LevelManager() {
     return saved >= 0 && saved < LEVELS.length ? saved : 0;
   });
   const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set(loadProgress().completedIds));
-  const [bestStars, setBestStars] = useState<Record<string, number>>(() => loadProgress().stars);
   const [resetKey, setResetKey] = useState(0);
   const [completion, setCompletion] = useState<Completion | null>(null);
   const level = LEVELS[levelIndex];
   const isLastLevel = levelIndex + 1 >= LEVELS.length;
 
-  const handleComplete = (stars: number) => {
+  const handleComplete = () => {
     const nextCompletedIds = new Set(completedIds).add(level.id);
     setCompletedIds(nextCompletedIds);
-    const nextBestStars = { ...bestStars, [level.id]: Math.max(bestStars[level.id] ?? 0, stars) };
-    setBestStars(nextBestStars);
-    saveProgress(levelIndex, Array.from(nextCompletedIds), nextBestStars);
-    setCompletion({ levelName: level.name, stars, isFinal: isLastLevel });
+    saveProgress(levelIndex, Array.from(nextCompletedIds));
+    setCompletion({ levelName: level.name, isFinal: isLastLevel });
   };
 
   const handleContinue = () => {
     setCompletion(null);
     if (isLastLevel) {
       setLevelIndex(0);
-      saveProgress(0, Array.from(completedIds), bestStars);
+      saveProgress(0, Array.from(completedIds));
     } else {
       setLevelIndex((i) => i + 1);
     }
@@ -54,17 +45,26 @@ export function LevelManager() {
 
   const handleRestart = () => setResetKey((k) => k + 1);
 
+  /** Fires when a level's shared countdown clock (see LevelConfig.levelTimerMs) hits zero before
+   * the level is won - same effect as tapping the Restart button, no fail-state UI of its own. */
+  const handleTimeout = () => handleRestart();
+
   const isFirstLevel = levelIndex === 0;
   const jumpTo = (index: number) => {
     if (index < 0 || index >= LEVELS.length) return;
     setCompletion(null);
     setLevelIndex(index);
-    saveProgress(index, Array.from(completedIds), bestStars);
+    saveProgress(index, Array.from(completedIds));
   };
 
   return (
     <View style={styles.root}>
-      <GameCanvas key={`${level.id}-${resetKey}`} level={level} onComplete={handleComplete} />
+      <GameCanvas
+        key={`${level.id}-${resetKey}`}
+        level={level}
+        onComplete={handleComplete}
+        onTimeout={handleTimeout}
+      />
       <View style={styles.hud}>
         <Text style={styles.hudPhaseText}>
           Phase {level.phase} · {phaseName(level.phase)}
@@ -83,7 +83,7 @@ export function LevelManager() {
           </Pressable>
           <Text style={styles.navCounterText}>
             {levelIndex + 1} / {LEVELS.length}
-            {completedIds.has(level.id) ? `  ${starRow(bestStars[level.id] ?? 0)}` : ''}
+            {completedIds.has(level.id) ? ' ✓' : ''}
           </Text>
           <Pressable
             style={[styles.navButton, isLastLevel && styles.navButtonDisabled]}
@@ -98,12 +98,7 @@ export function LevelManager() {
         <Text style={styles.restartButtonText}>Restart</Text>
       </Pressable>
       {completion && (
-        <LevelCompleteOverlay
-          levelName={completion.levelName}
-          stars={completion.stars}
-          isFinal={completion.isFinal}
-          onContinue={handleContinue}
-        />
+        <LevelCompleteOverlay levelName={completion.levelName} isFinal={completion.isFinal} onContinue={handleContinue} />
       )}
     </View>
   );
