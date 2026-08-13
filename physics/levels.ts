@@ -313,6 +313,12 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'Six balls, one shared clock.',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
     pegs: PEGS_ROW_1,
+    // Same two-gear count as level-4, moved outward (dx ±110) to clear PEGS_ROW_1 (dx ±55) and
+    // sit in the gap above the new MIDDLE_ROW cups. First-pass placement/speed.
+    gears: [
+      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
+      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
+    ],
     ballCount: 6,
     ballColors: BALL_PALETTE,
     // See level-4's comment — same 15s + 5s/ball formula (7.5s/cup here), tightened as ball count
@@ -329,6 +335,14 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'Every cup, one countdown.',
     targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    // Mastery checkpoint: level-5's pair plus a second pair in the gap below MIDDLE_ROW (clearing
+    // PEGS_ROW_2 the same way), spun a little faster. First-pass placement/speed.
+    gears: [
+      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
+      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
+      { id: 'gear-3', dx: -110, y: 280, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
+      { id: 'gear-4', dx: 110, y: 280, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
+    ],
     ballCount: 9,
     ballColors: BALL_PALETTE,
     // See level-4's comment — same formula (6.67s/cup here), the phase's mastery checkpoint.
@@ -344,6 +358,11 @@ export const LEVELS: LevelConfig[] = [
     challenge: "The button won't sit still.",
     targets: TOP_ROW,
     pegs: [],
+    // Same layout as level-4 (identical targets/pegs) — gears mirror it exactly.
+    gears: [
+      { id: 'gear-1', dx: -70, y: 210, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
+      { id: 'gear-2', dx: 70, y: 210, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
+    ],
     ballCount: 3,
     ballColors: BALL_PALETTE,
     buttonMotion: 'drift',
@@ -358,6 +377,11 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'It teleports after every shot.',
     targets: [...TOP_ROW, ...MIDDLE_ROW],
     pegs: PEGS_ROW_1,
+    // Same layout as level-5 — gears mirror it exactly.
+    gears: [
+      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
+      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
+    ],
     ballCount: 6,
     ballColors: BALL_PALETTE,
     buttonMotion: 'jump',
@@ -372,6 +396,13 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'A second button appears — briefly.',
     targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
     pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
+    // Same layout as level-6 (mastery checkpoint) — gears mirror it exactly.
+    gears: [
+      { id: 'gear-1', dx: -110, y: 190, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
+      { id: 'gear-2', dx: 110, y: 190, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
+      { id: 'gear-3', dx: -110, y: 280, radius: 14, sides: 6, angularSpeed: -Math.PI / 1800 },
+      { id: 'gear-4', dx: 110, y: 280, radius: 14, sides: 6, angularSpeed: Math.PI / 1800 },
+    ],
     ballCount: 9,
     ballColors: BALL_PALETTE,
     buttonMotion: 'twin',
