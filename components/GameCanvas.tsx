@@ -10,6 +10,8 @@ import {
   createPeg,
   createGear,
   rotateGear,
+  createGate,
+  setGateOpen,
   createCup,
   translateCup,
   rotateCup,
@@ -333,6 +335,8 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   /** Reef's rotating gears: gear id -> its physics body, and id -> cumulative radians rotated so far. */
   const gearBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
   const gearAngleRef = useRef<Map<string, number>>(new Map());
+  /** Trench's periodic gates: gate id -> its physics body. */
+  const gateBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
   /** Phase 9 Level 27's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
   const shakeOffsetRef = useRef({ x: 0, y: 0 });
   const shakeUntilRef = useRef(0);
@@ -352,6 +356,9 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const [clockRemainingMs, setClockRemainingMs] = useState<number | null>(null);
   /** Reef's rotating gears: gear id -> cumulative radians rotated, mirrored from gearAngleRef for render. */
   const [gearAngles, setGearAngles] = useState<Record<string, number>>({});
+  /** Trench's gates: ids currently open. Sunken Ship's geysers: ids currently firing. Both mirrored once per frame purely for render - the actual mask toggle/force application reads live state, not these. */
+  const [gateOpenIds, setGateOpenIds] = useState<Set<string>>(new Set());
+  const [geyserActiveIds, setGeyserActiveIds] = useState<Set<string>>(new Set());
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -396,6 +403,14 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       gearAngleRef.current.set(gear.id, 0);
     });
     setGearAngles({});
+
+    gateBodiesRef.current.clear();
+    (level.gates ?? []).forEach((gate) => {
+      const body = createGate(pw.world, width / 2 + gate.dx, gate.y, gate.width, gate.height, gate.id);
+      gateBodiesRef.current.set(gate.id, body);
+    });
+    setGateOpenIds(new Set());
+    setGeyserActiveIds(new Set());
 
     // Cluster balls in a small grid above the ramp's low point, like the pooled balls on the
     // real toy, instead of a single spread-out row.
@@ -533,6 +548,32 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         setGearAngles(Object.fromEntries(gearAngleRef.current));
       }
 
+      // Trench's periodic gates: a mask flip, not a force or a world-membership change, so this
+      // is safe in the same once-per-frame-before-the-substep-loop block as gears/cup motion.
+      if (level.gates) {
+        const openIds = new Set<string>();
+        for (const gate of level.gates) {
+          const body = gateBodiesRef.current.get(gate.id);
+          if (!body) continue;
+          const isOpen = isDutyCycleActive(now, levelStartAtRef, gate.openMs, gate.closedMs, gate.phaseOffsetMs ?? 0);
+          setGateOpen(body, isOpen);
+          if (isOpen) openIds.add(gate.id);
+        }
+        setGateOpenIds(openIds);
+      }
+
+      // Sunken Ship's geysers: display-only mirror, once per frame — the actual force is applied
+      // inside the substep loop below, which recomputes this independently at full precision.
+      if (level.geysers) {
+        const activeIds = new Set<string>();
+        for (const geyser of level.geysers) {
+          if (isDutyCycleActive(now, levelStartAtRef, geyser.fireMs, geyser.idleMs, geyser.phaseOffsetMs ?? 0)) {
+            activeIds.add(geyser.id);
+          }
+        }
+        setGeyserActiveIds(activeIds);
+      }
+
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
       // Phase 7's split buttons: each side gets its own fixed x (offset by that side's swipe-drag
       // bias on Level 21) and a hard clip to its own half — a normal jetXRef/secondaryOffsetRef
@@ -661,6 +702,25 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
             JET_FAN_RATE,
             JET_SPREAD_STRENGTH
           );
+        }
+        if (level.geysers) {
+          // Sunken Ship's uncontrolled geyser: a real force, so — like every other applyAirJet
+          // call above — it has to be reapplied every substep, not once per render frame (Matter
+          // clears accumulated forces after each Engine.update).
+          for (const geyser of level.geysers) {
+            if (isDutyCycleActive(now, levelStartAtRef, geyser.fireMs, geyser.idleMs, geyser.phaseOffsetMs ?? 0)) {
+              applyAirJet(
+                pw.world,
+                width / 2 + geyser.dx,
+                geyser.y,
+                geyser.strength,
+                JET_BASE_COLUMN_HALF_WIDTH,
+                JET_VERTICAL_RANGE,
+                JET_FAN_RATE,
+                JET_SPREAD_STRENGTH
+              );
+            }
+          }
         }
 
         Matter.Engine.update(pw.engine, FIXED_DT);
@@ -925,6 +985,36 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
             />
           );
         })}
+        {(level.gates ?? []).map((g) => {
+          const cx = width / 2 + g.dx;
+          const isOpen = gateOpenIds.has(g.id);
+          return (
+            <Line
+              key={g.id}
+              x1={cx - g.width / 2}
+              y1={g.y}
+              x2={cx + g.width / 2}
+              y2={g.y}
+              stroke={isOpen ? 'rgba(255,255,255,0.35)' : 'rgba(255,120,120,0.85)'}
+              strokeWidth={g.height}
+              strokeLinecap="round"
+            />
+          );
+        })}
+        {(level.geysers ?? []).map((geyser) => {
+          const isActive = geyserActiveIds.has(geyser.id);
+          return (
+            <Circle
+              key={geyser.id}
+              cx={width / 2 + geyser.dx}
+              cy={geyser.y}
+              r={isActive ? 10 : 5}
+              fill={isActive ? 'rgba(180,240,255,0.6)' : 'rgba(180,240,255,0.25)'}
+              stroke="rgba(255,255,255,0.7)"
+              strokeWidth={1}
+            />
+          );
+        })}
         {level.targets.map((t) => {
           const isRainbow = t.id === rainbowTargetId;
           const dyn = level.cupMotion ? cupMotionSnapshot[t.id] : undefined;
@@ -1126,6 +1216,24 @@ function computeCupTiltDeg(now: number, pace: number = 1): number {
   const half = closeMs / 2;
   const frac = closeT < half ? closeT / half : (closeMs - closeT) / half;
   return frac * CUP_TILT_MAX_DEG;
+}
+
+/**
+ * Shared duty-cycle helper for Trench's gates (open vs closed) and Sunken Ship's geysers (firing
+ * vs idle) — both are just "active for activeMs, then idle for idleMs, repeat," phase-offsettable
+ * so multiple obstacles on one level don't sync up. Anchored to levelStartAtRef so every level
+ * (re)starts its obstacles' cycles from the same reference point as the shared clock.
+ */
+function isDutyCycleActive(
+  now: number,
+  levelStartAtRef: React.MutableRefObject<number>,
+  activeMs: number,
+  idleMs: number,
+  phaseOffsetMs: number = 0
+): boolean {
+  const cycleMs = activeMs + idleMs;
+  const t = ((now - levelStartAtRef.current + phaseOffsetMs) % cycleMs + cycleMs) % cycleMs;
+  return t < activeMs;
 }
 
 /**

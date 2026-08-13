@@ -29,6 +29,40 @@ export interface GearConfig {
   angularSpeed: number;
 }
 
+/**
+ * Trench's periodic gate: a wall segment that toggles between blocking and passable on a
+ * repeating cycle (see createGate/setGateOpen in physics/engine.ts). Forces the player to time a
+ * shot through the open window rather than just aim.
+ */
+export interface GateConfig {
+  id: string;
+  dx: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Ms open, then ms closed, repeating. */
+  openMs: number;
+  closedMs: number;
+  /** Offset into the cycle at level start, ms - lets multiple gates run out of phase. */
+  phaseOffsetMs?: number;
+}
+
+/**
+ * Sunken Ship's periodic geyser: an uncontrollable air jet (reuses the same applyAirJet the
+ * player's own jet uses, see physics/engine.ts) that fires on its own schedule instead of on
+ * button-press.
+ */
+export interface GeyserConfig {
+  id: string;
+  dx: number;
+  y: number;
+  /** Ms firing, then ms idle, repeating. */
+  fireMs: number;
+  idleMs: number;
+  phaseOffsetMs?: number;
+  strength: number;
+}
+
 export interface PhaseConfig {
   id: number;
   name: string;
@@ -103,6 +137,10 @@ export interface LevelConfig {
   pegs: PegConfig[];
   /** Reef's rotating-gear obstacle (see GearConfig). Undefined = no gears, i.e. every level so far. */
   gears?: GearConfig[];
+  /** Trench's periodic gate obstacle (see GateConfig). */
+  gates?: GateConfig[];
+  /** Sunken Ship's periodic geyser obstacle (see GeyserConfig). */
+  geysers?: GeyserConfig[];
   ballCount: number;
   ballColors: string[];
   /**
@@ -573,6 +611,13 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'Two buttons, each covers half the board.',
     targets: TOP_ROW,
     pegs: [],
+    // Trench's debut obstacle: one gate per split channel, out of phase with each other, so
+    // "time each independent stream" now means timing past a gate too, not just aiming.
+    // First-pass placement/timing, not tuned against real playtest data.
+    gates: [
+      { id: 'gate-1', dx: -55, y: 210, width: 70, height: 10, openMs: 1200, closedMs: 800 },
+      { id: 'gate-2', dx: 55, y: 210, width: 70, height: 10, openMs: 1200, closedMs: 800, phaseOffsetMs: 1000 },
+    ],
     ballCount: 3,
     ballColors: BALL_PALETTE,
     splitButtons: 'basic',
@@ -614,6 +659,11 @@ export const LEVELS: LevelConfig[] = [
     challenge: "The cups won't stay put.",
     targets: TOP_ROW,
     pegs: [],
+    // Sunken Ship's debut obstacle: an uncontrolled upward surge off to the side, distinct from
+    // the player's own central jet - water forcing up through broken hull plating. Weaker than
+    // the primary jet (JET_STRENGTH 0.0013) so it's a real factor but not overpowering. First-pass
+    // placement/timing, not tuned against real playtest data.
+    geysers: [{ id: 'geyser-1', dx: -90, y: 380, fireMs: 900, idleMs: 1300, strength: 0.0009 }],
     ballCount: 3,
     ballColors: BALL_PALETTE,
     cupMotion: 'sway',

@@ -148,6 +148,28 @@ export function rotateGear(gear: Matter.Body, deltaRad: number) {
   Matter.Body.rotate(gear, deltaRad);
 }
 
+/**
+ * Trench's periodic gate: a static wall segment whose collisionFilter.mask toggles between
+ * blocking (COLLISION_CATEGORY_BALL) and passable (0) on a repeating open/closed cycle. Matches
+ * the existing collision-category idiom rather than introducing Body.setStatic (unused anywhere
+ * in this codebase, and this project's matter-js type defs are already known stale in one spot).
+ */
+export function createGate(world: Matter.World, x: number, y: number, width: number, height: number, id: string) {
+  const gate = Matter.Bodies.rectangle(x, y, width, height, {
+    isStatic: true,
+    restitution: 0.3,
+    friction: 0.5,
+    label: `gate-${id}`,
+    collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
+  });
+  Matter.World.add(world, gate);
+  return gate;
+}
+
+export function setGateOpen(gate: Matter.Body, open: boolean) {
+  gate.collisionFilter.mask = open ? 0 : COLLISION_CATEGORY_BALL;
+}
+
 /** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */
 export const BALL_RADIUS = 13;
 /**
