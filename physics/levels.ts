@@ -14,6 +14,21 @@ export interface PegConfig {
   y: number;
 }
 
+/**
+ * Reef's rotating-gear obstacle: a regular polygon (see createGear in physics/engine.ts), spun
+ * continuously via Matter.Body.rotate. Non-circular on purpose - a rotating circle is physically
+ * identical to a static one, so the polygon shape is what actually makes bounces vary as it spins.
+ */
+export interface GearConfig {
+  id: string;
+  dx: number;
+  y: number;
+  radius: number;
+  sides: number;
+  /** Radians per ms - sign sets spin direction. */
+  angularSpeed: number;
+}
+
 export interface PhaseConfig {
   id: number;
   name: string;
@@ -53,14 +68,13 @@ const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: 
 /**
  * The ocean-journey framing over the existing 9 Phases: two Phases per zone, grouped by where
  * they already fit thematically (Undertow's current/rising-water suits Open Ocean; the finale
- * suits Sunken Ship as a climax) rather than by renumbering any mechanic. Only Tide Pool has its
- * own palette so far — pale foam -> bright turquoise -> shallow teal, deliberately avoiding a dark
- * bottom stop so it reads "shallow" once deeper zones get their own darker palettes in a later
- * pass. Every other zone is DEFAULT_PALETTE until its own turn.
+ * suits Sunken Ship as a climax) rather than by renumbering any mechanic. Tide Pool (pale foam ->
+ * bright turquoise -> shallow teal) and Reef (warm coral -> vivid turquoise -> deeper reef teal)
+ * have their own palettes so far; every zone past Reef is still DEFAULT_PALETTE until its own turn.
  */
 export const ZONES: ZoneConfig[] = [
   { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
-  { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: DEFAULT_PALETTE },
+  { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
   { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: DEFAULT_PALETTE },
   { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: DEFAULT_PALETTE },
   { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: DEFAULT_PALETTE },
@@ -82,6 +96,8 @@ export interface LevelConfig {
   challenge: string;
   targets: TargetConfig[];
   pegs: PegConfig[];
+  /** Reef's rotating-gear obstacle (see GearConfig). Undefined = no gears, i.e. every level so far. */
+  gears?: GearConfig[];
   ballCount: number;
   ballColors: string[];
   /**
@@ -273,6 +289,13 @@ export const LEVELS: LevelConfig[] = [
     challenge: 'Fill every cup before time runs out.',
     targets: TOP_ROW,
     pegs: [],
+    // Reef's debut obstacle: two rotating hexagons between the ramp and the cups. First-pass
+    // placement/speed, not tuned against real playtest data — Level 4 had zero pegs before this,
+    // so this is purely additive rather than replacing anything.
+    gears: [
+      { id: 'gear-1', dx: -70, y: 210, radius: 14, sides: 6, angularSpeed: Math.PI / 2000 },
+      { id: 'gear-2', dx: 70, y: 210, radius: 14, sides: 6, angularSpeed: -Math.PI / 2000 },
+    ],
     ballCount: 3,
     ballColors: BALL_PALETTE,
     // Redesigned from a per-ball aging/sinking timer to one shared level clock, per explicit

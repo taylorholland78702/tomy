@@ -8,6 +8,8 @@ import {
   createPhysicsWorld,
   createVRamp,
   createPeg,
+  createGear,
+  rotateGear,
   createCup,
   translateCup,
   rotateCup,
@@ -43,6 +45,16 @@ import { playCountdownTick, playBonusChime, playComboNote, playLandingNote } fro
  */
 function cupPath(x: number, y: number) {
   return `M ${x - CUP_RADIUS} ${y} A ${CUP_RADIUS} ${CUP_RADIUS} 0 0 0 ${x + CUP_RADIUS} ${y}`;
+}
+
+/** SVG path for a regular polygon — Reef's rotating gear, drawn to match createGear's collision shape exactly (same center/radius/sides) so what's visible is what the ball actually bounces off. */
+function gearPath(cx: number, cy: number, radius: number, sides: number): string {
+  const points: string[] = [];
+  for (let i = 0; i < sides; i++) {
+    const theta = (i / sides) * 2 * Math.PI - Math.PI / 2;
+    points.push(`${cx + radius * Math.cos(theta)} ${cy + radius * Math.sin(theta)}`);
+  }
+  return `M ${points[0]} L ${points.slice(1).join(' L ')} Z`;
 }
 
 /** Phase 8's cup motion: a cup's current absolute position/tilt, plus how much dx/tilt has already been physically applied to its walls so far (kept delta-based so translateCup/rotateCup calls compose correctly, mirroring rampRiseAppliedRef's pattern). */
@@ -318,6 +330,9 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const cupWallsRef = useRef<Map<string, Matter.Body[]>>(new Map());
   /** Phase 8's cup motion: target id -> its current absolute position/tilt and how much of each has already been applied to the physical walls so far (kept delta-based like rampRiseAppliedRef). */
   const cupMotionRef = useRef<Map<string, CupMotionState>>(new Map());
+  /** Reef's rotating gears: gear id -> its physics body, and id -> cumulative radians rotated so far. */
+  const gearBodiesRef = useRef<Map<string, Matter.Body>>(new Map());
+  const gearAngleRef = useRef<Map<string, number>>(new Map());
   /** Phase 9 Level 27's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
   const shakeOffsetRef = useRef({ x: 0, y: 0 });
   const shakeUntilRef = useRef(0);
@@ -335,6 +350,8 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const [shakeOffset, setShakeOffsetState] = useState({ x: 0, y: 0 });
   /** Phase 2's shared level clock, ms remaining — null when the level has no levelTimerMs. */
   const [clockRemainingMs, setClockRemainingMs] = useState<number | null>(null);
+  /** Reef's rotating gears: gear id -> cumulative radians rotated, mirrored from gearAngleRef for render. */
+  const [gearAngles, setGearAngles] = useState<Record<string, number>>({});
 
   const { needsPermission, requestPermission } = useTiltGravity(physicsRef.current?.engine ?? null);
 
@@ -370,6 +387,15 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
     level.pegs.forEach((peg) => {
       createPeg(pw.world, width / 2 + peg.dx, peg.y);
     });
+
+    gearBodiesRef.current.clear();
+    gearAngleRef.current.clear();
+    (level.gears ?? []).forEach((gear) => {
+      const body = createGear(pw.world, width / 2 + gear.dx, gear.y, gear.radius, gear.sides, gear.id);
+      gearBodiesRef.current.set(gear.id, body);
+      gearAngleRef.current.set(gear.id, 0);
+    });
+    setGearAngles({});
 
     // Cluster balls in a small grid above the ramp's low point, like the pooled balls on the
     // real toy, instead of a single spread-out row.
@@ -492,6 +518,19 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           const state = cupMotionRef.current.get(t.id);
           if (state) cupAnchorsRef.current[i] = { x: state.x, restY: cupAnchorsRef.current[i].restY };
         });
+      }
+
+      // Reef's rotating gears: same once-per-frame-before-the-substep-loop timing as
+      // updateCupMotion above, since this is a kinematic body update (not a per-substep force).
+      if (level.gears) {
+        for (const gear of level.gears) {
+          const body = gearBodiesRef.current.get(gear.id);
+          if (!body) continue;
+          const deltaRad = gear.angularSpeed * delta;
+          rotateGear(body, deltaRad);
+          gearAngleRef.current.set(gear.id, (gearAngleRef.current.get(gear.id) ?? 0) + deltaRad);
+        }
+        setGearAngles(Object.fromEntries(gearAngleRef.current));
       }
 
       const anyJetActive = jetActiveRef.current || secondaryActiveRef.current;
@@ -870,6 +909,22 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         {level.pegs.map((p) => (
           <Circle key={p.id} cx={width / 2 + p.dx} cy={p.y} r={6} fill="rgba(255,255,255,0.55)" stroke="rgba(255,255,255,0.8)" strokeWidth={1} />
         ))}
+        {(level.gears ?? []).map((g) => {
+          const cx = width / 2 + g.dx;
+          const cy = g.y;
+          const deg = ((gearAngles[g.id] ?? 0) * 180) / Math.PI;
+          return (
+            <Path
+              key={g.id}
+              d={gearPath(cx, cy, g.radius, g.sides)}
+              transform={`rotate(${deg} ${cx} ${cy})`}
+              fill="rgba(255,255,255,0.45)"
+              stroke="rgba(255,255,255,0.85)"
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+            />
+          );
+        })}
         {level.targets.map((t) => {
           const isRainbow = t.id === rainbowTargetId;
           const dyn = level.cupMotion ? cupMotionSnapshot[t.id] : undefined;

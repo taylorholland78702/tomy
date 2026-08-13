@@ -125,6 +125,29 @@ export function createPeg(world: Matter.World, x: number, y: number, radius = 6)
   return peg;
 }
 
+/**
+ * Reef's rotating-gear obstacle: a regular polygon, spun continuously via rotateGear below. A
+ * circle would look like it's spinning but be physically identical to a static one at every
+ * angle — the polygon shape is what actually makes the collision surface (and therefore bounces)
+ * change as it rotates.
+ */
+export function createGear(world: Matter.World, x: number, y: number, radius: number, sides: number, id: string) {
+  const gear = Matter.Bodies.polygon(x, y, sides, radius, {
+    isStatic: true,
+    restitution: 0.7,
+    friction: 0.3,
+    label: `gear-${id}`,
+    collisionFilter: { category: COLLISION_CATEGORY_STATIC, mask: COLLISION_CATEGORY_BALL },
+  });
+  Matter.World.add(world, gear);
+  return gear;
+}
+
+/** Incremental rotation (like translateCup, not an absolute angle) around the gear's own center. */
+export function rotateGear(gear: Matter.Body, deltaRad: number) {
+  Matter.Body.rotate(gear, deltaRad);
+}
+
 /** Radius of every ball in the tank. Cup geometry is derived from this, not level-configurable. */
 export const BALL_RADIUS = 13;
 /**
