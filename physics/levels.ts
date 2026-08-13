@@ -68,18 +68,21 @@ const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: 
 /**
  * The ocean-journey framing over the existing 9 Phases: two Phases per zone, grouped by where
  * they already fit thematically (Undertow's current/rising-water suits Open Ocean; the finale
- * suits Sunken Ship as a climax) rather than by renumbering any mechanic. Tide Pool (pale foam ->
- * bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise -> deeper reef teal), and
- * Open Ocean (dim steel blue -> deep navy -> near-black, sparse and dark per its "harder because
- * you can see less" brief) have their own palettes so far; every zone past Open Ocean is still
- * DEFAULT_PALETTE until its own turn.
+ * suits Sunken Ship as a climax) rather than by renumbering any mechanic. All five zones now have
+ * their own water palette, each darker/more saturated than the last as the "journey" descends:
+ * Tide Pool (pale foam -> bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise ->
+ * deeper reef teal), Open Ocean (dim steel blue -> deep navy -> near-black, sparse per its "harder
+ * because you can see less" brief), Trench (deep abyssal purple fading to near-black, the darkest
+ * zone), and Sunken Ship (murky wreck green, distinct from Trench's cold purple-black — a hint of
+ * decay rather than pure depth). DEFAULT_PALETTE now only backs levels that predate the zone
+ * system in tests/tooling, not any live zone.
  */
 export const ZONES: ZoneConfig[] = [
   { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
   { id: 'reef', name: 'Reef', phaseIds: [2, 3], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
   { id: 'open-ocean', name: 'Open Ocean', phaseIds: [4, 5], palette: { top: '#3A5A78', mid: '#1C3A56', bottom: '#081826' } },
-  { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: DEFAULT_PALETTE },
-  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: DEFAULT_PALETTE },
+  { id: 'trench', name: 'Trench', phaseIds: [6, 7], palette: { top: '#1A1830', mid: '#0D0B1A', bottom: '#020108' } },
+  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [8, 9], palette: { top: '#2A3B35', mid: '#16241F', bottom: '#0A120F' } },
 ];
 
 export function zoneForPhase(phaseId: number): ZoneConfig {
