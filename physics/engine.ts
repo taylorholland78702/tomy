@@ -169,7 +169,13 @@ export function createCup(world: Matter.World, x: number, y: number, id: string)
   }
 
   Matter.World.add(world, segments);
-  return { segments, restY: y + (CUP_RADIUS - BALL_RADIUS) };
+  // The bottom segment's solid rectangle spans from CUP_RADIUS - thickness/2 to CUP_RADIUS +
+  // thickness/2 from the bowl's virtual center - a ball resting on top of it touches the INNER
+  // (upward-facing) surface at CUP_RADIUS - thickness/2, not the arc's centerline. Confirmed
+  // directly: a ball dropped and left to settle under real gravity comes to rest ~2.8px above
+  // (shallower than) the un-corrected y + (CUP_RADIUS - BALL_RADIUS), matching this formula
+  // (~3px, thickness/2) far more closely than the old one did.
+  return { segments, restY: y + (CUP_RADIUS - thickness / 2 - BALL_RADIUS) };
 }
 
 /** Phase 8: rigidly translates every wall segment of a cup by the same incremental delta — used for the sway mechanic. */
