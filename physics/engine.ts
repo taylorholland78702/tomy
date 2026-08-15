@@ -331,7 +331,7 @@ export function applyWaterPhysics(bodies: Matter.Body[]) {
 }
 
 /**
- * The side-current hazard (used by Phase 3's mastery level and the finale): a directional (not
+ * The side-current hazard (used throughout the finale Phase): a directional (not
  * random, unlike applyWaterPhysics's turbulence) mass-scaled sideways force applied to every
  * submerged body. `strength` is expected to already be signed and oscillating (the caller drives
  * it with a sine wave over time — see GameCanvas.tsx) so this function itself stays a simple,

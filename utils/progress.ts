@@ -1,7 +1,8 @@
-// Bumped to v2 when Phases 3-7 were removed and the remaining phases/levels renumbered — a v1
-// levelIndex/completedIds would now point at different levels than the ones a returning player
-// actually completed, so the old save is deliberately discarded rather than silently misapplied.
-const STORAGE_KEY = 'waterful-toys-progress-v2';
+// Bumped to v3 when Phase 3 (Full Tilt) was removed and the finale renumbered down to Levels
+// 7-9 — same reasoning as the v1->v2 bump: a stale levelIndex/completedIds would now point at
+// different levels than the ones a returning player actually completed, so the old save is
+// deliberately discarded rather than silently misapplied.
+const STORAGE_KEY = 'waterful-toys-progress-v3';
 
 interface Progress {
   levelIndex: number;

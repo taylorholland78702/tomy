@@ -215,7 +215,7 @@ const FORWARD_TILT_EJECT_GRAVITY_Y = -0.5;
 /** Countdown tick cadence range (ms) — calm with time to spare, urgent as the clock nears zero. */
 const TICK_INTERVAL_CALM_MS = 900;
 const TICK_INTERVAL_URGENT_MS = 200;
-/** Sunken Ship's portals: how long a ball is immune to re-teleporting right after landing on an exit. */
+/** Portals (currently unused by any level): how long a ball is immune to re-teleporting right after landing on an exit. */
 const PORTAL_COOLDOWN_MS = 500;
 /**
  * The moving-target mechanic (currently unused by any level): how far the Air Jet button can shift from center, px. Kept
@@ -227,12 +227,12 @@ const BUTTON_RANGE_X = 80;
 const DRIFT_PERIOD_MS = 5000;
 /** A fresh jump must land at least this fraction of the range away, so it always reads as a real re-aim. */
 const JUMP_MIN_DISTANCE_FRACTION = 0.4;
-/** Level 9's temporary second button: how often it appears, and how long it stays up. */
+/** The 'twin' buttonMotion variant's temporary second button (currently unused): how often it appears, and how long it stays up. */
 const TWIN_APPEAR_INTERVAL_MS = 4500;
 const TWIN_VISIBLE_MS = 1800;
-/** Phase 4's combo meter: a landing within this many ms of the last one extends the streak. */
+/** Phase 3's combo meter: a landing within this many ms of the last one extends the streak. */
 const COMBO_WINDOW_MS = 3000;
-/** Phase 4 Level 12's finale: a screen jitter fires once per this many combo count crossed. */
+/** Phase 3 Level 9's finale: a screen jitter fires once per this many combo count crossed. */
 const SHAKE_COMBO_STEP = 5;
 const SHAKE_MAGNITUDE_PX = 6;
 const SHAKE_DURATION_MS = 140;
@@ -301,16 +301,16 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const accumulatorRef = useRef(0);
   /** The moving-target mechanic (currently unused by any level): primary button's current x offset from center, px. */
   const buttonOffsetRef = useRef(0);
-  /** Level 9's temporary second button: whether it's currently held, and its own x offset. */
+  /** The 'twin' buttonMotion variant's temporary second button (currently unused): whether it's currently held, and its own x offset. */
   const secondaryActiveRef = useRef(false);
   const secondaryOffsetRef = useRef(0);
-  /** Level 9's temporary second button: ms timestamps driving its appear/hide schedule. */
+  /** The 'twin' buttonMotion variant's temporary second button (currently unused): ms timestamps driving its appear/hide schedule. */
   const twinNextAtRef = useRef(0);
   const twinHideAtRef = useRef(0);
   const twinVisibleRef = useRef(false);
   /** The chain-match mechanic (currently unused): keys of matchRows groups that have already fired their bonus this level instance. */
   const matchedRowsRef = useRef<Set<string>>(new Set());
-  /** Phase 4's combo meter: current streak length, and the timestamp of the last landing. */
+  /** Phase 3's combo meter: current streak length, and the timestamp of the last landing. */
   const comboCountRef = useRef(0);
   const comboLastLandingAtRef = useRef(0);
   /** The rainbow bonus cup (currently unused): which target (if any) is currently active, and its schedule. */
@@ -348,10 +348,10 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const crumblingPegHitsRef = useRef<Map<string, number>>(new Map());
   const crumblingPegPendingRemovalRef = useRef<Set<string>>(new Set());
   const crumblingPegDestroyedRef = useRef<Set<string>>(new Set());
-  /** Sunken Ship's portals: ball body id -> timestamp it becomes eligible for another teleport,
+  /** Portals (currently unused by any level): ball body id -> timestamp it becomes eligible for another teleport,
       so landing on the exit doesn't immediately teleport it straight back. */
   const portalCooldownRef = useRef<Map<number, number>>(new Map());
-  /** Phase 4 Level 12's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
+  /** Phase 3 Level 9's finale: current shake jitter and when it decays back to 0 by, plus the last combo-multiple-of-SHAKE_COMBO_STEP that already fired a jitter (edge-detection so it fires once per newly-crossed threshold, not every frame past it). */
   const shakeOffsetRef = useRef({ x: 0, y: 0 });
   const shakeUntilRef = useRef(0);
   const comboShakeThresholdRef = useRef(0);
@@ -370,7 +370,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
   const [clockRemainingMs, setClockRemainingMs] = useState<number | null>(null);
   /** Reef's rotating gears: gear id -> cumulative radians rotated, mirrored from gearAngleRef for render. */
   const [gearAngles, setGearAngles] = useState<Record<string, number>>({});
-  /** Trench's gates: ids currently open. Sunken Ship's geysers: ids currently firing. Both mirrored once per frame purely for render - the actual mask toggle/force application reads live state, not these. */
+  /** Gates (currently unused by any level): ids currently open. Geysers (currently unused by any level): ids currently firing. Both mirrored once per frame purely for render - the actual mask toggle/force application reads live state, not these. */
   const [gateOpenIds, setGateOpenIds] = useState<Set<string>>(new Set());
   const [geyserActiveIds, setGeyserActiveIds] = useState<Set<string>>(new Set());
   /** Trench's crumbling pegs: id -> hits so far (for the fading "cracking" render), and ids permanently destroyed. */
@@ -619,7 +619,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         setGateOpenIds(openIds);
       }
 
-      // Sunken Ship's geysers: display-only mirror, once per frame — the actual force is applied
+      // Geysers (currently unused by any level): display-only mirror, once per frame — the actual force is applied
       // inside the substep loop below, which recomputes this independently at full precision.
       if (level.geysers) {
         const activeIds = new Set<string>();
@@ -687,7 +687,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
         if (level.sideCurrent) {
           // The side current hazard: a smooth, continuously-oscillating sideways force (sine wave)
           // rather than a one-way push, so balls don't just pile up
-          // against one wall over time. Phase 4's paceMultiplier (default 1) shortens the period —
+          // against one wall over time. Phase 3's paceMultiplier (default 1) shortens the period —
           // dividing rather than a separate constant, so it composes with the existing wave shape.
           // Reuses this render frame's `now` for every sub-step (rather than a separately-advancing
           // simulated clock) — the oscillation only needs to feel continuous in real time, and this
@@ -762,7 +762,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
           );
         }
         if (level.geysers) {
-          // Sunken Ship's uncontrolled geyser: a real force, so — like every other applyAirJet
+          // The uncontrolled geyser (currently unused by any level): a real force, so — like every other applyAirJet
           // call above — it has to be reapplied every substep, not once per render frame (Matter
           // clears accumulated forces after each Engine.update).
           for (const geyser of level.geysers) {
@@ -891,7 +891,7 @@ export function GameCanvas({ level, onComplete, onTimeout }: Props) {
       }
       if (level.crumblingPegs) setCrumblingPegHits(Object.fromEntries(crumblingPegHitsRef.current));
 
-      // Sunken Ship's portals: a position mutation, not a membership change, so it's safe here in
+      // Portals (currently unused by any level): a position mutation, not a membership change, so it's safe here in
       // the post-substep tail — placed after settledBalls above so an already-caught ball (still
       // physically near a portal only in edge-case layouts) never gets yanked back out of its cup.
       if (level.portals) {
@@ -1314,7 +1314,7 @@ const styles = StyleSheet.create({
  * in GameCanvas's handleHoldChange (this function only needs to run every frame for drift and for
  * the twin-button schedule).
  *
- * Returns whether Level 9's temporary second button should currently be visible/rendered. Its
+ * Returns whether the 'twin' buttonMotion variant's temporary second button (currently unused) should currently be visible/rendered. Its
  * position (secondaryOffsetRef) is set once at the moment it appears — opposite whichever side the
  * primary button is currently on — and held fixed until it hides, even if the primary jumps to a
  * new spot while the ghost is up, so the ghost doesn't visibly relocate mid-appearance.
@@ -1351,7 +1351,7 @@ function updateButtonMotion(
 /**
  * Triangular wave for Phase 3's tilt mechanic: a cup sits open (0deg) for most of
  * CUP_TILT_CYCLE_MS, then ramps 0->CUP_TILT_MAX_DEG->0 over the final CUP_TILT_CLOSE_MS of the
- * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble. Phase 4's
+ * cycle, so it reads as a deliberate close-and-reopen rather than a constant wobble. Phase 3's
  * paceMultiplier (default 1) shortens both the cycle and close window, for "quicker tilts" — the
  * per-cup phase stagger passed in via `now` is left un-scaled by the caller so speeding up doesn't
  * also resync all cups' tilts.
@@ -1369,8 +1369,9 @@ function computeCupTiltDeg(now: number, pace: number = 1): number {
 }
 
 /**
- * Shared duty-cycle helper for Trench's gates (open vs closed) and Sunken Ship's geysers (firing
- * vs idle) — both are just "active for activeMs, then idle for idleMs, repeat," phase-offsettable
+ * Shared duty-cycle helper for gates (open vs closed) and geysers (firing vs idle), both
+ * currently unused by any level — both are just "active for activeMs, then idle for idleMs,
+ * repeat," phase-offsettable
  * so multiple obstacles on one level don't sync up. Anchored to levelStartAtRef so every level
  * (re)starts its obstacles' cycles from the same reference point as the shared clock.
  */
@@ -1388,7 +1389,7 @@ function isDutyCycleActive(
 
 /**
  * Phase 3's cup motion: no-ops immediately when level.cupMotion is unset, so it never touches
- * cupWallsRef's bodies or cupMotionRef's state for any level outside Phase 3/4. Otherwise, for each target
+ * cupWallsRef's bodies or cupMotionRef's state for any level outside Phase 3's later levels. Otherwise, for each target
  * (staggered by its index in level.targets so multiple cups don't move in lockstep), computes a
  * desired sway offset and/or tilt angle, diffs against what's already been applied to get an
  * incremental delta (mirrors the rising-floor's rampRiseAppliedRef pattern), and physically
@@ -1553,7 +1554,7 @@ function updateLevelClockTick(
  * every frame in both directions: a cup un-fills the moment its ball is knocked out or lifted
  * back out by the jet, not just once when a ball first lands.
  *
- * `newlyFilled` lists only the ids that transitioned unfilled->filled *this frame* — Phase 4's
+ * `newlyFilled` lists only the ids that transitioned unfilled->filled *this frame* — Phase 3's
  * combo meter needs a genuine new landing, not "still filled from before", to know a fresh shot
  * was made.
  */
@@ -1678,7 +1679,7 @@ function triggerGoldenBonus(
 }
 
 /**
- * Phase 4's combo meter: a landing within COMBO_WINDOW_MS of the previous one extends the streak;
+ * Phase 3's combo meter: a landing within COMBO_WINDOW_MS of the previous one extends the streak;
  * a longer gap resets it. Decay is checked independently of new landings so the meter visibly
  * drops back to 0 if the player pauses too long, not just when they land again. No-op when the
  * level has no comboMeter.
@@ -1702,7 +1703,7 @@ function updateComboMeter(
 }
 
 /**
- * Phase 4 Level 12's finale flourishes: reacts to the SAME newlyFilled landings and comboCountRef
+ * Phase 3 Level 9's finale flourishes: reacts to the SAME newlyFilled landings and comboCountRef
  * that updateComboMeter just updated, rather than re-deriving landing detection. No-op when there
  * was no landing this frame. Plays a combo-pitched note on every landing; fires a brief screen
  * jitter once per newly-crossed multiple of SHAKE_COMBO_STEP (edge-detected via

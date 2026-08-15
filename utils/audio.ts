@@ -82,11 +82,11 @@ export function playBonusChime() {
   }
 }
 
-/** Phase 4 Level 12's finale: pitch/volume ceiling for playComboNote's mapping — see below. */
+/** Phase 3 Level 9's finale: pitch/volume ceiling for playComboNote's mapping — see below. */
 const COMBO_NOTE_MAX_COMBO = 12;
 
 /**
- * Landing note for Phase 4 Level 12's finale (see triggerFinaleEffects in GameCanvas.tsx). Reuses
+ * Landing note for Phase 3 Level 9's finale (see triggerFinaleEffects in GameCanvas.tsx). Reuses
  * playCountdownTick's urgency-style linear pitch/volume mapping, driven by the current combo count
  * instead of countdown urgency: comboCount is clamped to COMBO_NOTE_MAX_COMBO before mapping to
  * [0,1] so the pitch keeps climbing through a satisfying range but never screeches past it for

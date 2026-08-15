@@ -49,9 +49,9 @@ export interface GateConfig {
 }
 
 /**
- * Sunken Ship's periodic geyser: an uncontrollable air jet (reuses the same applyAirJet the
- * player's own jet uses, see physics/engine.ts) that fires on its own schedule instead of on
- * button-press.
+ * A periodic geyser: an uncontrollable air jet (reuses the same applyAirJet the player's own jet
+ * uses, see physics/engine.ts) that fires on its own schedule instead of on button-press.
+ * Currently unused by any level (its debut level was part of the Full Tilt phase, removed).
  */
 export interface GeyserConfig {
   id: string;
@@ -80,9 +80,10 @@ export interface CrumblingPegConfig {
 }
 
 /**
- * Sunken Ship's portal pair: entering either endpoint's radius teleports the ball to the other
+ * A portal pair: entering either endpoint's radius teleports the ball to the other
  * (bidirectional). No physics body - detected via a plain per-frame distance check, not collision
- * events, since a discrete "am I near this point" test doesn't need the real thing.
+ * events, since a discrete "am I near this point" test doesn't need the real thing. Currently
+ * unused by any level (its debut level was part of the Full Tilt phase, removed).
  */
 export interface PortalConfig {
   id: string;
@@ -102,8 +103,7 @@ export interface PhaseConfig {
 export const PHASES: PhaseConfig[] = [
   { id: 1, name: 'Foundations' },
   { id: 2, name: 'The Clock' },
-  { id: 3, name: 'Full Tilt' },
-  { id: 4, name: 'Waterfuls Unleashed' },
+  { id: 3, name: 'Waterfuls Unleashed' },
 ];
 
 export interface WaterPalette {
@@ -125,18 +125,18 @@ export interface ZoneConfig {
 const DEFAULT_PALETTE: WaterPalette = { top: '#8FF0FF', mid: '#39C4F0', bottom: '#0B5C8A' };
 
 /**
- * The ocean-journey framing over the game's 4 Phases. Tide Pool and Reef each get their own
- * Phase; Sunken Ship spans both finale Phases as the climax. Open Ocean and Trench (previously
- * Phases 4-7 of a 9-Phase game) were removed along with those phases. Tide Pool (pale foam ->
- * bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise -> deeper reef teal),
- * and Sunken Ship (murky wreck green, a hint of decay rather than pure depth) each keep their own
- * water palette. DEFAULT_PALETTE now only backs levels that predate the zone system in
- * tests/tooling, not any live zone.
+ * The ocean-journey framing over the game's 3 Phases: Tide Pool, Reef, and Sunken Ship as the
+ * finale climax, each getting its own Phase. Open Ocean, Trench, and Full Tilt's own slice of
+ * Sunken Ship (previously Phases 4-8 of a 9-Phase game) were removed along with those phases.
+ * Tide Pool (pale foam -> bright turquoise -> shallow teal), Reef (warm coral -> vivid turquoise
+ * -> deeper reef teal), and Sunken Ship (murky wreck green, a hint of decay rather than pure
+ * depth) each keep their own water palette. DEFAULT_PALETTE now only backs levels that predate
+ * the zone system in tests/tooling, not any live zone.
  */
 export const ZONES: ZoneConfig[] = [
   { id: 'tide-pool', name: 'Tide Pool', phaseIds: [1], palette: { top: '#EAFBF3', mid: '#7FE8D4', bottom: '#2FB8A0' } },
   { id: 'reef', name: 'Reef', phaseIds: [2], palette: { top: '#FFDFC4', mid: '#3FCBC0', bottom: '#0C7A88' } },
-  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [3, 4], palette: { top: '#2A3B35', mid: '#16241F', bottom: '#0A120F' } },
+  { id: 'sunken-ship', name: 'Sunken Ship', phaseIds: [3], palette: { top: '#2A3B35', mid: '#16241F', bottom: '#0A120F' } },
 ];
 
 export function zoneForPhase(phaseId: number): ZoneConfig {
@@ -159,11 +159,11 @@ export interface LevelConfig {
   gears?: GearConfig[];
   /** Periodic gate obstacle (see GateConfig). Currently unused by any level. */
   gates?: GateConfig[];
-  /** Sunken Ship's periodic geyser obstacle (see GeyserConfig). */
+  /** Periodic geyser obstacle (see GeyserConfig). Currently unused by any level. */
   geysers?: GeyserConfig[];
   /** Crumbling peg obstacle (see CrumblingPegConfig). Currently unused by any level. */
   crumblingPegs?: CrumblingPegConfig[];
-  /** Sunken Ship's portal pair obstacle (see PortalConfig). */
+  /** Portal pair obstacle (see PortalConfig). Currently unused by any level. */
   portals?: PortalConfig[];
   ballCount: number;
   ballColors: string[];
@@ -194,13 +194,13 @@ export interface LevelConfig {
   comboMeter?: boolean;
   /** Enables the temporary bonus cup that cycles between random unfilled targets. Currently unused by any level. */
   rainbowCup?: boolean;
-  /** Hazard mechanic: a gentle, continuously-oscillating sideways force on every ball. Used by Phase 3's mastery level and throughout the finale Phase. */
+  /** Hazard mechanic: a gentle, continuously-oscillating sideways force on every ball. Used throughout the finale Phase. */
   sideCurrent?: boolean;
   /**
    * Hazard mechanic: this many of the level's balls are "sinkers" — dull-colored balls that can
    * physically occupy a cup but never count toward filling it (they get a 'sinker-' label instead
-   * of 'ball-', which every win-condition/settle check already filters on). Used by Phase 3's
-   * mastery level.
+   * of 'ball-', which every win-condition/settle check already filters on). Currently unused by
+   * any level.
    */
   sinkerCount?: number;
   /** Hazard mechanic: the ramp gradually rises toward the fixed cups over the level. Currently unused by any level. */
@@ -228,28 +228,29 @@ export interface LevelConfig {
    */
   splitButtons?: 'basic' | 'centerBurst' | 'swipe';
   /**
-   * Phase 3's "full tilt" mechanic: one evolving control scheme (like buttonMotion/splitButtons) —
-   * 'sway' gently drifts every cup side-to-side, out of phase with each other; 'tilt' keeps cups
-   * still but periodically rotates each one shut on its own cycle (independent per cup), so a ball
-   * can't land while it's closed past a threshold tilt and an already-settled ball gets physically
-   * displaced as the wall rotates; 'full' runs both sway and tilt simultaneously. Undefined = cups
-   * stay perfectly still, i.e. every level outside Phase 3 and the finale.
+   * The "full tilt" mechanic (like buttonMotion/splitButtons, an evolving control scheme, not
+   * independent flags) — 'sway' gently drifts every cup side-to-side, out of phase with each
+   * other; 'tilt' keeps cups still but periodically rotates each one shut on its own cycle
+   * (independent per cup), so a ball can't land while it's closed past a threshold tilt and an
+   * already-settled ball gets physically displaced as the wall rotates; 'full' runs both sway and
+   * tilt simultaneously. Currently only used by the finale Phase's later levels. Undefined = cups
+   * stay perfectly still, i.e. every other level.
    */
   cupMotion?: 'sway' | 'tilt' | 'full';
   /**
-   * Phase 4 Level 11's "raise the pace" mechanic: scales every existing time-based mechanic this
+   * Phase 3 Level 8's "raise the pace" mechanic: scales every existing time-based mechanic this
    * level also enables (sideCurrent's oscillation period, cupMotion's tilt cycle) uniformly
    * faster. A plain multiplier rather than duplicate period constants, so it composes with
    * whichever flags this level already turns on without touching the shared module-level
    * constants those flags use for every other level. Undefined = 1 (no change), i.e. every level
-   * outside Levels 11-12.
+   * outside Levels 8-9.
    */
   paceMultiplier?: number;
   /**
-   * Phase 4 Level 12's finale mechanic: gates the combo-driven audio/visual flourishes (rising
+   * Phase 3 Level 9's finale mechanic: gates the combo-driven audio/visual flourishes (rising
    * landing-note pitch/volume, tank hue tint, threshold screen-shake). Kept separate from
    * comboMeter itself, since comboMeter's existing semantics are purely about tracking the combo
-   * counter/window — every earlier comboMeter level (10, 11) must keep rendering only the plain
+   * counter/window — every earlier comboMeter level (7, 8) must keep rendering only the plain
    * "Combo x N" pill with no side effects. Undefined = no finale effects, i.e. every other level.
    */
   finaleEffects?: boolean;
@@ -262,8 +263,8 @@ export interface LevelConfig {
    * every currently-locked ball in the level back to normal physics at once.
    *
    * Only set on Phases 1-2 (ids 1-6) — phases whose hazard doesn't depend on being able to
-   * dislodge an already-settled ball. Undefined (Phases 3-4 — ids 7-12) keeps the original
-   * applyCupRetention spring-only behavior, so side current and cup sway/tilt can still walk a
+   * dislodge an already-settled ball. Undefined (Phase 3 — ids 7-9) keeps the original
+   * applyCupRetention spring-only behavior, so side current and cup tilt can still walk a
    * settled ball back out exactly as before.
    */
   stickyRetention?: boolean;
@@ -423,62 +424,6 @@ export const LEVELS: LevelConfig[] = [
     phase: 3,
     levelInPhase: 1,
     type: 'baskets',
-    name: 'Gentle Sway',
-    challenge: "The cups won't stay put.",
-    targets: TOP_ROW,
-    pegs: [],
-    // Sunken Ship's debut obstacle: an uncontrolled upward surge off to the side, distinct from
-    // the player's own central jet - water forcing up through broken hull plating. Weaker than
-    // the primary jet (JET_STRENGTH 0.0013) so it's a real factor but not overpowering. First-pass
-    // placement/timing, not tuned against real playtest data.
-    geysers: [{ id: 'geyser-1', dx: -90, y: 380, fireMs: 900, idleMs: 1300, strength: 0.0009 }],
-    ballCount: 3,
-    ballColors: BALL_PALETTE,
-    cupMotion: 'sway',
-  },
-  {
-    id: 'level-8',
-    phase: 3,
-    levelInPhase: 2,
-    type: 'baskets',
-    name: 'Closing Time',
-    challenge: 'Cups periodically tilt shut.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW],
-    pegs: PEGS_ROW_1,
-    // Sunken Ship's debut obstacle: a left/right shortcut pair, placed clear of PEGS_ROW_1
-    // (dx +-55, y 185) and both cup rows. First-pass placement, not tuned against real playtest
-    // data.
-    portals: [{ id: 'portal-1', aDx: -150, aY: 250, bDx: 150, bY: 250, radius: 16 }],
-    ballCount: 6,
-    ballColors: BALL_PALETTE,
-    cupMotion: 'tilt',
-  },
-  {
-    id: 'level-9',
-    phase: 3,
-    levelInPhase: 3,
-    type: 'baskets',
-    name: 'Full Tilt',
-    challenge: 'Swaying, tilting cups, current, and a sinker.',
-    targets: [...TOP_ROW, ...MIDDLE_ROW, ...BOTTOM_ROW],
-    pegs: [...PEGS_ROW_1, ...PEGS_ROW_2],
-    // 9 cups + 1 sinker (which never counts toward filling a cup) needs 10 balls total, not 9 —
-    // otherwise there aren't enough real balls to ever fill every cup and the level is unwinnable.
-    // BALL_PALETTE only has 9 entries, so append one more repeated color for the 10th ball.
-    ballCount: 10,
-    ballColors: [...BALL_PALETTE, BALL_PALETTE[0]],
-    // Combines this phase's own sway/tilt mechanics with a sideways current and a sinker ball for
-    // a genuine everything-at-once mastery checkpoint — the hardest level in the phase for a
-    // reason.
-    cupMotion: 'full',
-    sideCurrent: true,
-    sinkerCount: 1,
-  },
-  {
-    id: 'level-10',
-    phase: 4,
-    levelInPhase: 1,
-    type: 'baskets',
     name: 'Highlight Reel',
     challenge: 'Current and combos — all at once.',
     targets: TOP_ROW,
@@ -492,8 +437,8 @@ export const LEVELS: LevelConfig[] = [
     comboMeter: true,
   },
   {
-    id: 'level-11',
-    phase: 4,
+    id: 'level-8',
+    phase: 3,
     levelInPhase: 2,
     type: 'baskets',
     name: 'Full Speed',
@@ -502,9 +447,9 @@ export const LEVELS: LevelConfig[] = [
     pegs: PEGS_ROW_1,
     ballCount: 6,
     ballColors: BALL_PALETTE,
-    // Same ingredients as Level 10 plus cup tilt, all sped up via paceMultiplier: faster current
+    // Same ingredients as Level 7 plus cup tilt, all sped up via paceMultiplier: faster current
     // oscillation, quicker cup tilt cycles, and now a tighter shared clock — "everything from
-    // Level 10, but urgent." levelTimerMs is Level 4's 15s + 5s/ball formula (45s for 6 balls)
+    // Level 7, but urgent." levelTimerMs is Level 4's 15s + 5s/ball formula (45s for 6 balls)
     // divided by paceMultiplier, same as every other timed mechanic this level scales —
     // first-pass estimate, not tuned against real playtest data.
     sideCurrent: true,
@@ -514,8 +459,8 @@ export const LEVELS: LevelConfig[] = [
     paceMultiplier: 1.6,
   },
   {
-    id: 'level-12',
-    phase: 4,
+    id: 'level-9',
+    phase: 3,
     levelInPhase: 3,
     type: 'baskets',
     name: 'Waterfuls Unleashed',
@@ -526,7 +471,7 @@ export const LEVELS: LevelConfig[] = [
     ballColors: BALL_PALETTE,
     // The set-piece finale: full remix + full pace + the lightweight combo-reactive flourishes
     // (rising note, tank tint, threshold screen-shake — see GameCanvas.tsx). levelTimerMs: see
-    // Level 11's comment - same formula (60s for 9 balls) divided by paceMultiplier.
+    // Level 8's comment - same formula (60s for 9 balls) divided by paceMultiplier.
     sideCurrent: true,
     cupMotion: 'full',
     comboMeter: true,
